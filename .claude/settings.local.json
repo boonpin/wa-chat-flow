@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm add drizzle-orm better-sqlite3 whatsapp-web.js qrcode openai @google/generative-ai bcryptjs jsonwebtoken uuid)",
+      "Bash(pnpm add -D drizzle-kit @types/better-sqlite3 @types/qrcode @types/bcryptjs @types/jsonwebtoken @types/uuid)",
+      "Bash(ls \"/Users/boonpin/Documents/Workspace/prv/wa-robot/app/\\(dashboard\\)/\")",
+      "Bash(pnpm build)",
+      "Bash(pnpm add -D tsx)",
+      "Bash(pnpm seed)"
+    ]
+  }
+}
