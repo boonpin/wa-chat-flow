@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Badge, Button, Card, EmptyState, Input, Select, Textarea, Toggle, useToast } from '@/components/ui'
 
 interface Bot {
   id: string
@@ -14,190 +15,289 @@ interface Bot {
 
 const EMPTY_BOT = { name: '', provider: 'openai', apiKey: '', model: 'gpt-4o-mini', prompt: '', isDefault: false }
 
+const PROMPT_TEMPLATES = [
+  {
+    label: 'General Assistant',
+    value: 'You are a helpful WhatsApp assistant. Answer questions clearly and concisely. Be friendly and professional.',
+  },
+  {
+    label: 'Customer Support',
+    value: 'You are a customer support agent. Help users with their inquiries politely. For complex issues, tell them to contact support@company.com.',
+  },
+  {
+    label: 'Sales Assistant',
+    value: 'You are a sales assistant. Help customers understand our products and services. For pricing questions, direct them to contact our sales team.',
+  },
+]
+
+const MODELS: Record<string, string[]> = {
+  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+  gemini: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'],
+}
+
 export default function BotsPage() {
   const [bots, setBots] = useState<Bot[]>([])
-  const [showForm, setShowForm] = useState(false)
+  const [selectedBot, setSelectedBot] = useState<Bot | null>(null)
   const [form, setForm] = useState({ ...EMPTY_BOT })
-  const [editId, setEditId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [isNew, setIsNew] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const { toast } = useToast()
 
   async function fetchBots() {
     const r = await fetch('/api/bots')
-    setBots(await r.json())
+    const data = await r.json()
+    setBots(data)
+    return data
   }
 
   useEffect(() => { fetchBots() }, [])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    if (editId) {
-      await fetch(`/api/bots/${editId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-    } else {
-      await fetch('/api/bots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-    }
-    setShowForm(false)
-    setEditId(null)
-    setForm({ ...EMPTY_BOT })
-    fetchBots()
-    setLoading(false)
+  function openNew() {
+    const f = { ...EMPTY_BOT }
+    setForm(f)
+    setSelectedBot(null)
+    setIsNew(true)
+    setDirty(false)
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this bot?')) return
-    await fetch(`/api/bots/${id}`, { method: 'DELETE' })
-    fetchBots()
-  }
-
-  function handleEdit(bot: Bot) {
+  function openEdit(bot: Bot) {
     setForm({ name: bot.name, provider: bot.provider, apiKey: bot.apiKey, model: bot.model, prompt: bot.prompt, isDefault: bot.isDefault })
-    setEditId(bot.id)
-    setShowForm(true)
+    setSelectedBot(bot)
+    setIsNew(false)
+    setDirty(false)
   }
+
+  function closePanel() {
+    setSelectedBot(null)
+    setIsNew(false)
+    setDirty(false)
+  }
+
+  function updateForm<K extends keyof typeof form>(key: K, val: typeof form[K]) {
+    setForm(f => ({ ...f, [key]: val }))
+    setDirty(true)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      if (isNew) {
+        const r = await fetch('/api/bots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        })
+        if (!r.ok) throw new Error('Failed to create')
+        toast('Bot created successfully')
+      } else if (selectedBot) {
+        const r = await fetch(`/api/bots/${selectedBot.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        })
+        if (!r.ok) throw new Error('Failed to update')
+        toast('Bot saved')
+      }
+      setDirty(false)
+      const updated = await fetchBots()
+      if (isNew) {
+        const created = updated[updated.length - 1]
+        if (created) openEdit(created)
+        else closePanel()
+      } else if (selectedBot) {
+        const fresh = updated.find((b: Bot) => b.id === selectedBot.id)
+        if (fresh) openEdit(fresh)
+      }
+    } catch {
+      toast('Failed to save bot', 'error')
+    }
+    setSaving(false)
+  }
+
+  async function handleDelete(bot: Bot) {
+    if (!confirm(`Delete "${bot.name}"? This cannot be undone.`)) return
+    await fetch(`/api/bots/${bot.id}`, { method: 'DELETE' })
+    toast('Bot deleted')
+    closePanel()
+    fetchBots()
+  }
+
+  const showPanel = isNew || !!selectedBot
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">AI Bots</h1>
-        <button
-          onClick={() => { setShowForm(true); setEditId(null); setForm({ ...EMPTY_BOT }) }}
-          className="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg transition-colors"
-        >
-          + New Bot
-        </button>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Bots</h1>
+          <p className="text-sm text-[#475569] mt-0.5">Configure AI bots to handle auto replies</p>
+        </div>
+        <Button onClick={openNew}>
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          New Bot
+        </Button>
       </div>
 
-      {showForm && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-          <h2 className="font-semibold text-gray-900 mb-4">{editId ? 'Edit Bot' : 'New Bot'}</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input
-                  value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
-                <select
-                  value={form.provider}
-                  onChange={e => setForm(f => ({ ...f, provider: e.target.value, model: e.target.value === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash' }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="openai">OpenAI</option>
-                  <option value="gemini">Gemini</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-                <input
-                  value={form.apiKey}
-                  onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}
-                  type="password"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                <input
-                  value={form.model}
-                  onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
-              <textarea
-                value={form.prompt}
-                onChange={e => setForm(f => ({ ...f, prompt: e.target.value }))}
-                rows={4}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="You are a helpful WhatsApp assistant..."
-                required
+      <div className={`grid gap-4 ${showPanel ? 'grid-cols-5' : 'grid-cols-1 max-w-2xl'}`}>
+        {/* Bot list */}
+        <div className={showPanel ? 'col-span-2' : 'col-span-1'}>
+          <Card className="overflow-hidden">
+            {bots.length === 0 ? (
+              <EmptyState
+                icon="🤖"
+                title="No bots yet"
+                description="Create your first AI bot to start auto-replying"
+                action={<Button onClick={openNew} size="sm">Create bot</Button>}
               />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isDefault"
-                checked={form.isDefault}
-                onChange={e => setForm(f => ({ ...f, isDefault: e.target.checked }))}
-                className="rounded"
-              />
-              <label htmlFor="isDefault" className="text-sm text-gray-700">Set as default bot</label>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={loading}
-                className="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {loading ? 'Saving...' : 'Save Bot'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowForm(false); setEditId(null) }}
-                className="border border-gray-300 text-gray-700 text-sm px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+            ) : (
+              <div className="divide-y divide-[#F1F5F9]">
+                {bots.map(bot => {
+                  const active = selectedBot?.id === bot.id
+                  return (
+                    <button
+                      key={bot.id}
+                      onClick={() => openEdit(bot)}
+                      className={`w-full text-left px-4 py-4 transition-colors hover:bg-[#F8FAFC] ${active ? 'bg-[#F0FDF4] border-l-2 border-[#16A34A]' : ''}`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-[#0F172A]">{bot.name}</span>
+                        {bot.isDefault && <Badge variant="green" size="sm">Default</Badge>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="gray">
+                          {bot.provider === 'openai' ? 'OpenAI' : 'Gemini'}
+                        </Badge>
+                        <span className="text-xs text-[#94A3B8]">{bot.model}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </Card>
         </div>
-      )}
 
-      <div className="space-y-3">
-        {bots.length === 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">
-            No bots yet. Create your first AI bot.
+        {/* Editor panel */}
+        {showPanel && (
+          <div className="col-span-3">
+            <Card className="overflow-hidden">
+              {/* Panel header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#E6EAF0]">
+                <h2 className="text-sm font-semibold text-[#0F172A]">
+                  {isNew ? 'New Bot' : `Edit — ${selectedBot?.name}`}
+                </h2>
+                <button onClick={closePanel} className="text-[#94A3B8] hover:text-[#475569] transition-colors">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="p-5 space-y-5">
+                {/* Name + Provider */}
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="Bot Name"
+                    value={form.name}
+                    onChange={e => updateForm('name', e.target.value)}
+                    placeholder="e.g. Customer Support"
+                    required
+                  />
+                  <Select
+                    label="AI Provider"
+                    value={form.provider}
+                    onChange={e => {
+                      const p = e.target.value
+                      updateForm('provider', p)
+                      updateForm('model', MODELS[p][0])
+                    }}
+                  >
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Google Gemini</option>
+                  </Select>
+                </div>
+
+                {/* API Key + Model */}
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="API Key"
+                    type="password"
+                    value={form.apiKey}
+                    onChange={e => updateForm('apiKey', e.target.value)}
+                    placeholder="sk-..."
+                    required
+                  />
+                  <Select
+                    label="Model"
+                    value={form.model}
+                    onChange={e => updateForm('model', e.target.value)}
+                  >
+                    {(MODELS[form.provider] || []).map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </Select>
+                </div>
+
+                {/* Prompt */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-medium text-[#0F172A]">System Prompt</label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-[#94A3B8]">Templates:</span>
+                      {PROMPT_TEMPLATES.map(t => (
+                        <button
+                          key={t.label}
+                          type="button"
+                          onClick={() => updateForm('prompt', t.value)}
+                          className="text-xs text-[#16A34A] hover:underline px-1"
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <textarea
+                    value={form.prompt}
+                    onChange={e => updateForm('prompt', e.target.value)}
+                    rows={6}
+                    className="w-full border border-[#E6EAF0] rounded-lg px-3 py-2.5 text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#16A34A] focus:border-transparent resize-none font-mono"
+                    placeholder="You are a helpful WhatsApp assistant..."
+                    required
+                  />
+                  <p className="text-xs text-[#94A3B8] mt-1">This is the AI&apos;s personality and instructions</p>
+                </div>
+
+                {/* Default toggle */}
+                <div className="flex items-center justify-between py-3 px-4 bg-[#F8FAFC] rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium text-[#0F172A]">Set as default bot</p>
+                    <p className="text-xs text-[#475569]">Used when a contact has no specific bot assigned</p>
+                  </div>
+                  <Toggle checked={form.isDefault} onChange={v => updateForm('isDefault', v)} />
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-between pt-1 border-t border-[#E6EAF0]">
+                  <div>
+                    {!isNew && selectedBot && (
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(selectedBot)} className="text-[#DC2626] hover:text-[#DC2626] hover:bg-[#FEE2E2]">
+                        Delete bot
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" size="sm" onClick={closePanel}>Cancel</Button>
+                    <Button size="sm" onClick={handleSave} loading={saving} disabled={!dirty && !isNew}>
+                      {saving ? 'Saving...' : 'Save Bot'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
           </div>
         )}
-        {bots.map(bot => (
-          <div key={bot.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-gray-900">{bot.name}</span>
-                {bot.isDefault && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Default</span>}
-              </div>
-              <div className="text-xs text-gray-500 mt-0.5">{bot.provider} · {bot.model}</div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleEdit(bot)}
-                className="text-sm text-blue-600 hover:text-blue-700 px-3 py-1 rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => handleDelete(bot.id)}
-                className="text-sm text-red-600 hover:text-red-700 px-3 py-1 rounded-lg hover:bg-red-50 transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   )
