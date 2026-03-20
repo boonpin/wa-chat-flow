@@ -4,6 +4,6 @@ let initialized = false
 export async function ensureWAInit() {
   if (initialized) return
   initialized = true
-  const { initWhatsappClient } = await import('./client')
-  initWhatsappClient().catch(console.error)
+  const { initAllSessions } = await import('./client')
+  initAllSessions().catch(console.error)
 }

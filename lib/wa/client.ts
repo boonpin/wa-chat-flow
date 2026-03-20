@@ -5,68 +5,73 @@ import { eq } from 'drizzle-orm'
 import { generateAIReply } from '@/lib/ai/engine'
 import { v4 as uuidv4 } from 'uuid'
 
+type WAStatus = 'offline' | 'waiting_qr' | 'connected'
+
 // Use globalThis to survive Next.js hot reloads in dev mode
 declare global {
-  // eslint-disable-next-line no-var
-  var __waClient: Client | null
-  // eslint-disable-next-line no-var
-  var __waQrCode: string | null
-  // eslint-disable-next-line no-var
-  var __waStatus: 'offline' | 'waiting_qr' | 'connected'
-  // eslint-disable-next-line no-var
-  var __waInitializing: boolean
+  var __waClients: Map<string, Client>
+  var __waQrCodes: Map<string, string | null>
+  var __waStatuses: Map<string, WAStatus>
+  var __waInitializing: Set<string>
 }
 
-globalThis.__waClient ??= null
-globalThis.__waQrCode ??= null
-globalThis.__waStatus ??= 'offline'
-globalThis.__waInitializing ??= false
+globalThis.__waClients ??= new Map()
+globalThis.__waQrCodes ??= new Map()
+globalThis.__waStatuses ??= new Map()
+globalThis.__waInitializing ??= new Set()
 
-export function getWAStatus() {
-  return globalThis.__waStatus
+export function getWAStatus(sessionId: string): WAStatus {
+  return globalThis.__waStatuses.get(sessionId) ?? 'offline'
 }
 
-export function getQRCode() {
-  return globalThis.__waQrCode
+export function getQRCode(sessionId: string): string | null {
+  return globalThis.__waQrCodes.get(sessionId) ?? null
 }
 
-export function getClient() {
-  return globalThis.__waClient
+export function getClient(sessionId: string): Client | undefined {
+  return globalThis.__waClients.get(sessionId)
 }
 
-export async function initWhatsappClient() {
-  if (globalThis.__waClient || globalThis.__waInitializing) return
+export async function initWhatsappClient(sessionId: string) {
+  if (globalThis.__waClients.has(sessionId) || globalThis.__waInitializing.has(sessionId)) return
 
-  globalThis.__waInitializing = true
+  globalThis.__waInitializing.add(sessionId)
 
   const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: './data/wa-sessions' }),
+    authStrategy: new LocalAuth({
+      clientId: sessionId,
+      dataPath: './storage/data/wa-sessions',
+    }),
+    webVersionCache: {
+      type: 'local',
+      path: './storage/data/.wwebjs_cache',
+    },
     puppeteer: {
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     },
   })
 
-  globalThis.__waClient = client
+  globalThis.__waClients.set(sessionId, client)
 
   client.on('qr', (qr) => {
-    globalThis.__waQrCode = qr
-    globalThis.__waStatus = 'waiting_qr'
-    updateSessionStatus('waiting_qr')
+    globalThis.__waQrCodes.set(sessionId, qr)
+    globalThis.__waStatuses.set(sessionId, 'waiting_qr')
+    updateSessionStatus(sessionId, 'waiting_qr')
   })
 
   client.on('ready', () => {
-    globalThis.__waStatus = 'connected'
-    globalThis.__waQrCode = null
-    globalThis.__waInitializing = false
-    updateSessionStatus('connected')
+    globalThis.__waStatuses.set(sessionId, 'connected')
+    globalThis.__waQrCodes.set(sessionId, null)
+    globalThis.__waInitializing.delete(sessionId)
+    updateSessionStatus(sessionId, 'connected')
   })
 
   client.on('disconnected', () => {
-    globalThis.__waStatus = 'offline'
-    globalThis.__waQrCode = null
-    globalThis.__waClient = null
-    globalThis.__waInitializing = false
-    updateSessionStatus('offline')
+    globalThis.__waStatuses.set(sessionId, 'offline')
+    globalThis.__waQrCodes.set(sessionId, null)
+    globalThis.__waClients.delete(sessionId)
+    globalThis.__waInitializing.delete(sessionId)
+    updateSessionStatus(sessionId, 'offline')
   })
 
   client.on('message', async (msg) => {
@@ -74,6 +79,9 @@ export async function initWhatsappClient() {
     if (msg.from.endsWith('@g.us')) return
 
     const phone = msg.from.replace('@c.us', '')
+
+    // Check system auto reply first so new contacts inherit the setting
+    const settings = db.select().from(systemSettings).where(eq(systemSettings.id, 'default')).get()
 
     // Get or create contact
     let contact = db.select().from(contacts).where(eq(contacts.phoneNumber, phone)).get()
@@ -85,14 +93,17 @@ export async function initWhatsappClient() {
         id: uuidv4(),
         phoneNumber: phone,
         name: waContact.pushname || waContact.name || phone,
-        aiEnabled: false,
+        aiEnabled: settings?.autoReplyEnabled ?? false,
         aiBotId: null,
+        waSessionId: sessionId,
         createdAt: now,
         updatedAt: now,
       }
       db.insert(contacts).values(newContact).run()
       contact = newContact
     }
+
+    console.log(`[WA] [IN]  ${contact.name || phone}: ${msg.body}`)
 
     // Log incoming message
     db.insert(messages).values({
@@ -103,8 +114,6 @@ export async function initWhatsappClient() {
       createdAt: new Date().toISOString(),
     }).run()
 
-    // Check system auto reply
-    const settings = db.select().from(systemSettings).where(eq(systemSettings.id, 'default')).get()
     if (!settings?.autoReplyEnabled) return
 
     // Check contact ai enabled
@@ -125,7 +134,12 @@ export async function initWhatsappClient() {
 
     try {
       const reply = await generateAIReply(bot, msg.body)
-      await globalThis.__waClient!.sendMessage(msg.from, reply)
+      const activeClient = globalThis.__waClients.get(sessionId)
+      if (activeClient) {
+        await activeClient.sendMessage(msg.from, reply)
+      }
+
+      console.log(`[WA] [AI]  ${contact.name || phone}: ${reply}`)
 
       // Log outgoing message
       db.insert(messages).values({
@@ -142,34 +156,34 @@ export async function initWhatsappClient() {
 
   try {
     await client.initialize()
-    console.log('WhatsApp client initialized')
+    console.log(`WhatsApp client initialized: ${sessionId}`)
   } catch (err) {
-    console.error('WhatsApp client init error:', err)
-    globalThis.__waClient = null
-    globalThis.__waInitializing = false
+    console.error(`WhatsApp client init error (${sessionId}):`, err)
+    globalThis.__waClients.delete(sessionId)
+    globalThis.__waInitializing.delete(sessionId)
   }
 }
 
-function updateSessionStatus(newStatus: string) {
-  const existing = db.select().from(waSessions).where(eq(waSessions.id, 'main')).get()
+function updateSessionStatus(sessionId: string, newStatus: string) {
+  const existing = db.select().from(waSessions).where(eq(waSessions.id, sessionId)).get()
   const now = new Date().toISOString()
   if (existing) {
     db.update(waSessions)
       .set({ status: newStatus, lastConnectedAt: newStatus === 'connected' ? now : existing.lastConnectedAt })
-      .where(eq(waSessions.id, 'main'))
+      .where(eq(waSessions.id, sessionId))
       .run()
   } else {
     db.insert(waSessions).values({
-      id: 'main',
-      sessionName: 'main',
+      id: sessionId,
+      sessionName: sessionId,
       status: newStatus,
       lastConnectedAt: newStatus === 'connected' ? now : null,
     }).run()
   }
 }
 
-export async function logoutWhatsapp() {
-  const client = globalThis.__waClient
+export async function logoutWhatsapp(sessionId: string) {
+  const client = globalThis.__waClients.get(sessionId)
   if (client) {
     try {
       await client.logout()
@@ -181,10 +195,18 @@ export async function logoutWhatsapp() {
     } catch {
       // ignore destroy errors
     }
-    globalThis.__waClient = null
-    globalThis.__waStatus = 'offline'
-    globalThis.__waQrCode = null
-    globalThis.__waInitializing = false
-    updateSessionStatus('offline')
+    globalThis.__waClients.delete(sessionId)
+    globalThis.__waStatuses.set(sessionId, 'offline')
+    globalThis.__waQrCodes.set(sessionId, null)
+    globalThis.__waInitializing.delete(sessionId)
+    updateSessionStatus(sessionId, 'offline')
+  }
+}
+
+// Initialize all sessions stored in the DB at server startup
+export async function initAllSessions() {
+  const sessions = db.select().from(waSessions).all()
+  for (const session of sessions) {
+    initWhatsappClient(session.id).catch(console.error)
   }
 }

@@ -32,6 +32,7 @@ export const contacts = sqliteTable('contacts', {
   name: text('name'),
   aiEnabled: integer('ai_enabled', { mode: 'boolean' }).notNull().default(false),
   aiBotId: text('ai_bot_id'),
+  waSessionId: text('wa_session_id'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })
@@ -48,4 +49,30 @@ export const messages = sqliteTable('messages', {
   direction: text('direction').notNull(), // incoming | outgoing
   message: text('message').notNull(),
   createdAt: text('created_at').notNull(),
+})
+
+export const blastCampaigns = sqliteTable('blast_campaigns', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  messageTemplate: text('message_template').notNull(),
+  waSessionId: text('wa_session_id').notNull(),
+  status: text('status').notNull().default('draft'), // draft | sending | paused | completed | cancelled | failed
+  totalRecipients: integer('total_recipients').notNull().default(0),
+  sentCount: integer('sent_count').notNull().default(0),
+  failedCount: integer('failed_count').notNull().default(0),
+  delaySeconds: integer('delay_seconds').notNull().default(3),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+})
+
+export const blastRecipients = sqliteTable('blast_recipients', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').notNull(),
+  phone: text('phone').notNull(),
+  name: text('name'),
+  variables: text('variables'), // JSON string
+  status: text('status').notNull().default('pending'), // pending | sending | sent | failed | skipped
+  providerMessageId: text('provider_message_id'),
+  error: text('error'),
+  sentAt: text('sent_at'),
 })

@@ -5,7 +5,7 @@ import path from 'path'
 import fs from 'fs'
 
 function createDb() {
-  const dataDir = path.join(process.cwd(), 'data')
+  const dataDir = path.join(process.cwd(), 'storage', 'data')
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true })
   }
@@ -66,7 +66,36 @@ function createDb() {
       message TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS blast_campaigns (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      message_template TEXT NOT NULL,
+      wa_session_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      total_recipients INTEGER NOT NULL DEFAULT 0,
+      sent_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      delay_seconds INTEGER NOT NULL DEFAULT 3,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS blast_recipients (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      name TEXT,
+      variables TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      provider_message_id TEXT,
+      error TEXT,
+      sent_at TEXT
+    );
   `)
+
+  // Migrations for new columns
+  try { sqlite.exec(`ALTER TABLE contacts ADD COLUMN wa_session_id TEXT`) } catch { /* already exists */ }
 
   // Seed default settings
   const existingSettings = sqlite.prepare('SELECT id FROM system_settings WHERE id = ?').get('default')

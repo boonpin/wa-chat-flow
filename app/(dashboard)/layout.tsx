@@ -39,6 +39,15 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: '/blast',
+    label: 'Blast',
+    icon: (
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
     href: '/contacts',
     label: 'Contacts',
     icon: (
@@ -46,6 +55,15 @@ const NAV_ITEMS = [
         <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
         <circle cx="9" cy="7" r="4" />
         <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+      </svg>
+    ),
+  },
+  {
+    href: '/logs',
+    label: 'Logs',
+    icon: (
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+        <path d="M4 6h16M4 10h16M4 14h10M4 18h7" strokeLinecap="round" />
       </svg>
     ),
   },
@@ -93,7 +111,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Nav */}
           <nav className="flex-1 px-3 py-4 space-y-0.5">
             {NAV_ITEMS.map((item) => {
-              const active = pathname === item.href
+              const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'))
               return (
                 <Link
                   key={item.href}

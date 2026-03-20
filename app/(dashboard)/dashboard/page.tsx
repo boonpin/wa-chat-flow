@@ -6,6 +6,8 @@ import { Badge, Card, Skeleton } from '@/components/ui'
 
 interface DashboardData {
   waStatus: string
+  waConnectedCount: number
+  waTotalCount: number
   contactCount: number
   botCount: number
   autoReplyEnabled: boolean
@@ -37,14 +39,21 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
-      const [ws, cs, bs, ss] = await Promise.all([
-        fetch('/api/wa/status').then(r => r.json()),
+      const [sessions, cs, bs, ss] = await Promise.all([
+        fetch('/api/wa/sessions').then(r => r.json()),
         fetch('/api/contacts').then(r => r.json()),
         fetch('/api/bots').then(r => r.json()),
         fetch('/api/settings').then(r => r.json()),
       ])
+      const sessionList = Array.isArray(sessions) ? sessions : []
+      const connectedCount = sessionList.filter((s: { status: string }) => s.status === 'connected').length
+      let waStatus = 'offline'
+      if (connectedCount > 0) waStatus = 'connected'
+      else if (sessionList.some((s: { status: string }) => s.status === 'waiting_qr')) waStatus = 'waiting_qr'
       setData({
-        waStatus: ws.status,
+        waStatus,
+        waConnectedCount: connectedCount,
+        waTotalCount: sessionList.length,
         contactCount: Array.isArray(cs) ? cs.length : 0,
         botCount: Array.isArray(bs) ? bs.length : 0,
         autoReplyEnabled: ss.autoReplyEnabled,
@@ -58,7 +67,8 @@ export default function DashboardPage() {
 
   // Alerts
   const alerts: { message: string; href: string }[] = []
-  if (data && data.waStatus !== 'connected') alerts.push({ message: 'WhatsApp is not connected', href: '/wa' })
+  if (data && data.waTotalCount === 0) alerts.push({ message: 'No WhatsApp numbers added', href: '/wa' })
+  else if (data && data.waStatus !== 'connected') alerts.push({ message: 'No WhatsApp numbers connected', href: '/wa' })
   if (data && !data.autoReplyEnabled) alerts.push({ message: 'Auto Reply is disabled', href: '/settings' })
   if (data && data.botCount === 0) alerts.push({ message: 'No AI bots configured', href: '/bots' })
   if (data && data.botCount > 0 && !data.defaultBotId) alerts.push({ message: 'No default bot selected', href: '/settings' })
@@ -114,11 +124,18 @@ export default function DashboardPage() {
         <Card className="p-5">
           <p className="text-xs font-medium text-[#475569] uppercase tracking-wide mb-2">WhatsApp</p>
           {loading ? <Skeleton className="h-8 w-24" /> : (
-            <div className="mt-1"><WaStatusBadge status={data.waStatus} /></div>
+            <div className="mt-1">
+              <WaStatusBadge status={data.waStatus} />
+              {data.waTotalCount > 0 && (
+                <p className="text-xs text-[#94A3B8] mt-1">
+                  {data.waConnectedCount}/{data.waTotalCount} connected
+                </p>
+              )}
+            </div>
           )}
           {!loading && data.waStatus !== 'connected' && (
             <Link href="/wa" className="text-xs text-[#16A34A] hover:underline mt-2 inline-block">
-              Connect now →
+              {data.waTotalCount === 0 ? 'Add a number →' : 'Connect now →'}
             </Link>
           )}
         </Card>

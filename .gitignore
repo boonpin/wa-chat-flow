@@ -40,4 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-data/*
+# runtime storage
+/storage/data/
+/storage/temp/
+/.wwebjs_cache/
+/data/

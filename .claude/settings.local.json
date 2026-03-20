@@ -6,7 +6,20 @@
       "Bash(ls \"/Users/boonpin/Documents/Workspace/prv/wa-robot/app/\\(dashboard\\)/\")",
       "Bash(pnpm build)",
       "Bash(pnpm add -D tsx)",
-      "Bash(pnpm seed)"
+      "Bash(pnpm seed)",
+      "Bash(pnpm lint)",
+      "Bash(ls -la /Users/boonpin/Documents/Workspace/prv/wa-robot/app/\\\\\\(dashboard\\\\\\)/logs/)",
+      "Bash(cat /Users/boonpin/Documents/Workspace/prv/wa-robot/app/'\\(dashboard\\)'/wa/page.tsx)",
+      "Bash(cat /Users/boonpin/Documents/Workspace/prv/wa-robot/app/'\\(dashboard\\)'/layout.tsx)",
+      "Bash(cat /Users/boonpin/Documents/Workspace/prv/wa-robot/app/'\\(dashboard\\)'/settings/page.tsx)",
+      "Bash(cat /Users/boonpin/Documents/Workspace/prv/wa-robot/app/'\\(dashboard\\)'/contacts/page.tsx)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(cat /Users/boonpin/Documents/Workspace/prv/wa-robot/app/api/contacts/[id]/route.ts)",
+      "Bash(cat /Users/boonpin/Documents/Workspace/prv/wa-robot/app/api/bots/[id]/route.ts)",
+      "Bash(cat /Users/boonpin/Documents/Workspace/prv/wa-robot/app/\\\\\\(dashboard\\\\\\)/dashboard/page.tsx)",
+      "Bash(cat /Users/boonpin/Documents/Workspace/prv/wa-robot/app/\\\\\\(dashboard\\\\\\)/bots/page.tsx)",
+      "Bash(find /Users/boonpin/Documents/Workspace/prv/wa-robot/app/api/blast /Users/boonpin/Documents/Workspace/prv/wa-robot/lib/blast \"/Users/boonpin/Documents/Workspace/prv/wa-robot/app/\\(dashboard\\)/blast\" -type f)",
+      "Bash(grep -v \"^$\")"
     ]
   }
 }
