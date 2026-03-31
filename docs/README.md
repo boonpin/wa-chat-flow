@@ -12,7 +12,8 @@ This user guide is split by module for easier reading.
 6. [Contacts Management](./06-contacts-management.md)
 7. [Automation Settings](./07-automation-settings.md)
 8. [End-to-End Workflow](./08-end-to-end-workflow.md)
-9. [Troubleshooting](./09-troubleshooting.md)
+9. [System Design](./SYSTEM_DESIGN.md)
+10. [Troubleshooting](./09-troubleshooting.md)
 
 ## Screenshots
 

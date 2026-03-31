@@ -46,20 +46,13 @@ This tool is designed for businesses that want to **automate customer replies, s
 
 # Tech Stack
 
-Frontend:
-- ReactJS
-- Vite
-- TailwindCSS
-
-Backend:
-- Node.js
-- NestJS
-
-Database:
-- SQLite
-
-ORM:
-- Drizzle ORM
+- **Framework**: Next.js 16 (App Router)
+- **Language**: TypeScript
+- **Styling**: TailwindCSS 4
+- **Database**: Better-SQLite3
+- **ORM**: Drizzle ORM
+- **WhatsApp Integration**: whatsapp-web.js
+- **AI Providers**: OpenAI, Google Gemini
 
 WhatsApp Integration:
 - whatsapp-web.js
@@ -121,20 +114,13 @@ OPENAI_API_KEY=
 GEMINI_API_KEY=
 ```
 
-## 4. Run Database Migration
-
+## 4. Databases setup
+Ensure you have the database initialized:
 ```bash
-npm run db:migrate
+npm run seed
 ```
 
-## 5. Start Backend
-
-```bash
-npm run start
-```
-
-## 6. Start Frontend
-
+## 5. Start Application
 ```bash
 npm run dev
 ```
@@ -211,24 +197,19 @@ Options:
 ```
 wa-ai-handler
 │
-├── backend
-│   ├── modules
-│   │   ├── whatsapp
-│   │   ├── ai-bots
-│   │   ├── contacts
-│   │   └── system
-│   │
-│   ├── services
-│   └── controllers
+├── app                  # Next.js App Router (Pages, Layouts, API)
+│   ├── (dashboard)      # Authenticated dashboard routes
+│   ├── api              # Backend API routes
+│   └── login            # Authentication pages
 │
-├── frontend
-│   ├── pages
-│   ├── components
-│   └── containers
+├── lib                  # Shared utilities (DB, WA Client, Auth)
+│   ├── db               # Drizzle schema and connection
+│   ├── wa               # WhatsApp client logic
+│   └── ai               # AI provider integrations
 │
-├── database
-│   └── schema
-│
+├── components           # Reusable UI components
+├── public               # Static assets
+├── scripts              # Maintenance and seed scripts
 └── README.md
 ```
 
