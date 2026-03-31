@@ -1,5 +1,7 @@
 # WhatsApp AI Handler
 
+☕ Support this project: [Buy Me a Coffee](https://buymeacoffee.com/wongbpc)
+
 WhatsApp AI Handler is a lightweight automation platform that connects **WhatsApp messaging with AI-powered responses**. It allows businesses to automatically respond to incoming WhatsApp messages using configurable AI providers such as **OpenAI** or **Google Gemini**.
 
 The system provides a simple **web-based backoffice** where users can manage AI bots, configure prompts, connect WhatsApp sessions, and control how conversations are handled.
