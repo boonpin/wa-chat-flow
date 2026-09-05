@@ -192,9 +192,15 @@ export const toolInvocations = sqliteTable(
     toolId: text('tool_id').notNull(),
     conversationId: text('conversation_id').notNull(),
     contactId: text('contact_id').notNull(),
-    /** JSON object of validated field values. */
+    /** JSON object of validated field values, keyed by field name. */
     args: text('args').notNull(),
-    status: text('status').notNull().default('pending'), // pending | synced | failed
+    /**
+     * JSON of exactly what was transmitted to the sink, credentials removed.
+     * Null when nothing was sent. Differs from `args`: the sink sends column
+     * labels plus contact and conversation columns, not the raw field keys.
+     */
+    payload: text('payload'),
+    status: text('status').notNull().default('pending'), // pending | synced | failed | not_submitted
     error: text('error'),
     createdAt: text('created_at').notNull(),
     syncedAt: text('synced_at'),

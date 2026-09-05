@@ -34,6 +34,8 @@ interface Invocation {
   contactName: string | null
   contactPhone: string | null
   args: Record<string, unknown>
+  /** Exactly what was transmitted. Null means nothing ever left the app. */
+  payload: { values?: Record<string, string> } | null
   status: string
   error: string | null
   createdAt: string
@@ -190,7 +192,7 @@ export default function ToolsPage() {
   }
 
   const editing = isNew || selected !== null
-  const failedCount = invocations.filter((i) => i.status === 'failed').length
+  const failedCount = invocations.filter((i) => i.status !== 'synced').length
 
   return (
     <div className="p-6 max-w-5xl">
@@ -219,7 +221,7 @@ export default function ToolsPage() {
         </TabButton>
         <TabButton active={tab === 'captures'} onClick={() => setTab('captures')}>
           Captures ({invocations.length})
-          {failedCount > 0 && <span className="ml-1.5 text-[#DC2626]">· {failedCount} failed</span>}
+          {failedCount > 0 && <span className="ml-1.5 text-[#DC2626]">· {failedCount} unsynced</span>}
         </TabButton>
       </div>
 
@@ -512,8 +514,14 @@ function CaptureList({
         <Card key={inv.id} className="px-4 py-3">
           <div className="flex items-start gap-4">
             <div className="shrink-0 pt-0.5">
-              <Badge variant={inv.status === 'synced' ? 'green' : inv.status === 'failed' ? 'red' : 'yellow'}>
-                {inv.status}
+              <Badge
+                variant={
+                  inv.status === 'synced' ? 'green'
+                  : inv.status === 'pending' ? 'yellow'
+                  : 'red'
+                }
+              >
+                {inv.status === 'not_submitted' ? 'not submitted' : inv.status}
               </Badge>
             </div>
             <div className="flex-1 min-w-0">
@@ -524,17 +532,20 @@ function CaptureList({
                 {inv.toolName && <Badge variant="gray" size="sm">{inv.toolName}</Badge>}
               </div>
               <p className="text-sm text-[#334155] break-words">
-                {Object.entries(inv.args)
+                {Object.entries(inv.payload?.values ?? inv.args)
                   .map(([k, v]) => `${k}: ${String(v)}`)
                   .join('  ·  ')}
               </p>
+              {!inv.payload && (
+                <p className="text-xs text-[#94A3B8] mt-0.5">Not sent — nothing left the app.</p>
+              )}
               {inv.error && <p className="text-xs text-[#DC2626] break-words mt-0.5">{inv.error}</p>}
             </div>
             <div className="shrink-0 flex items-center gap-3">
               <span className="text-xs text-[#94A3B8] whitespace-nowrap">
                 {new Date(inv.createdAt).toLocaleString()}
               </span>
-              {inv.status === 'failed' && (
+              {inv.status !== 'synced' && (
                 <Button variant="secondary" size="sm" onClick={() => onRetry(inv)}>
                   Retry
                 </Button>

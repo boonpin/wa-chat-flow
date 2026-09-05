@@ -67,6 +67,7 @@ function resolveInvocation(invocationId: string | null) {
       sheetTab: tools.sheetTab,
       spreadsheetUrl: tools.spreadsheetUrl,
       args: toolInvocations.args,
+      payload: toolInvocations.payload,
       status: toolInvocations.status,
       error: toolInvocations.error,
       createdAt: toolInvocations.createdAt,
@@ -79,13 +80,18 @@ function resolveInvocation(invocationId: string | null) {
 
   if (!invocation) return null
 
-  return { ...invocation, args: safeParse(invocation.args) }
+  return {
+    ...invocation,
+    args: safeParse(invocation.args) ?? {},
+    // Null is meaningful here: nothing was ever transmitted.
+    payload: invocation.payload ? safeParse(invocation.payload) : null,
+  }
 }
 
-function safeParse(raw: string): Record<string, unknown> {
+function safeParse(raw: string): Record<string, unknown> | null {
   try {
     return JSON.parse(raw) as Record<string, unknown>
   } catch {
-    return {}
+    return null
   }
 }

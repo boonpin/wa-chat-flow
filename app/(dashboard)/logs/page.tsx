@@ -24,10 +24,22 @@ interface Invocation {
   sheetTab: string | null
   spreadsheetUrl: string | null
   args: Record<string, unknown>
+  /** Exactly what was transmitted. Null means nothing ever left the app. */
+  payload: SheetPayload | null
   status: string
   error: string | null
   createdAt: string
   syncedAt: string | null
+}
+
+/** The Apps Script wire shape, minus the shared secret. */
+interface SheetPayload {
+  sheet?: string
+  conversationId?: string
+  capturedAt?: string
+  contactName?: string
+  contactPhone?: string
+  values?: Record<string, string>
 }
 
 interface MessageDetail extends MessageLog {
@@ -416,36 +428,70 @@ function InvocationDetail({
   retrying: boolean
   onRetry: () => void
 }) {
-  const entries = Object.entries(invocation.args)
+  const { payload } = invocation
+  const columns = Object.entries(payload?.values ?? {})
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
         {invocation.toolName && <Badge variant="gray">{invocation.toolName}</Badge>}
-        <Badge variant={invocation.status === 'synced' ? 'green' : invocation.status === 'failed' ? 'red' : 'yellow'}>
-          {invocation.status}
-        </Badge>
+        <InvocationStatus status={invocation.status} />
         {invocation.sheetTab && <Badge variant="blue">{invocation.sheetTab}</Badge>}
       </div>
 
       {invocation.error && (
         <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-lg p-3">
-          <p className="text-xs font-medium text-[#991B1B] mb-1">Sheet write failed</p>
+          <p className="text-xs font-medium text-[#991B1B] mb-1">
+            {invocation.status === 'not_submitted' ? 'Not submitted' : 'Sheet write failed'}
+          </p>
           <p className="text-sm text-[#991B1B] break-words whitespace-pre-wrap">{invocation.error}</p>
           <p className="text-xs text-[#991B1B] opacity-80 mt-2">
-            The details below are saved here. Fix the tool&apos;s configuration, then retry.
+            {invocation.status === 'not_submitted'
+              ? 'The details below are saved here. Finish configuring the tool, then retry.'
+              : "The details below are saved here. Fix the tool's configuration, then retry."}
           </p>
         </div>
       )}
 
+      {/* What actually went over the wire — not the same as the raw arguments. */}
       <div>
-        <p className="text-xs font-medium text-[#475569] mb-1.5">Captured</p>
-        {entries.length === 0 ? (
-          <p className="text-sm text-[#94A3B8]">Nothing.</p>
+        <p className="text-xs font-medium text-[#475569] mb-1.5">Submitted to sheet</p>
+        {!payload ? (
+          <div className="bg-[#F8FAFC] border border-[#E6EAF0] rounded-lg p-3">
+            <p className="text-sm text-[#475569]">No submission — nothing was sent.</p>
+            <p className="text-xs text-[#94A3B8] mt-1">
+              The capture is stored here, but no request ever left the app.
+            </p>
+          </div>
+        ) : columns.length === 0 ? (
+          <p className="text-sm text-[#94A3B8]">A request was sent, but it carried no columns.</p>
         ) : (
-          <Rows rows={entries.map(([k, v]) => [k, String(v) || '—'])} />
+          <>
+            <Rows rows={columns.map(([label, value]) => [label, value || '—'])} />
+            <p className="text-xs text-[#94A3B8] mt-2">
+              Sent alongside: Captured At, Contact Name, Phone, Conversation ID.
+            </p>
+          </>
         )}
       </div>
+
+      {/* The raw call, for when the sheet columns do not look like you expected. */}
+      <details className="group">
+        <summary className="text-xs font-medium text-[#475569] cursor-pointer hover:text-[#0F172A] list-none flex items-center gap-1">
+          <span className="text-[#94A3B8] group-open:rotate-90 transition-transform">›</span>
+          What the AI passed
+        </summary>
+        <div className="mt-2 pl-3 border-l-2 border-[#E6EAF0]">
+          {Object.keys(invocation.args).length === 0 ? (
+            <p className="text-sm text-[#94A3B8]">Nothing.</p>
+          ) : (
+            <Rows rows={Object.entries(invocation.args).map(([k, v]) => [k, String(v) || '—'])} />
+          )}
+          <p className="text-xs text-[#94A3B8] mt-1.5">
+            Field keys, before they were mapped onto the sheet&apos;s column headers.
+          </p>
+        </div>
+      </details>
 
       <Rows
         rows={[
@@ -455,7 +501,7 @@ function InvocationDetail({
       />
 
       <div className="flex items-center gap-3 pt-1">
-        {invocation.status === 'failed' && (
+        {invocation.status !== 'synced' && (
           <Button size="sm" onClick={onRetry} loading={retrying}>
             Retry sync
           </Button>
@@ -473,6 +519,13 @@ function InvocationDetail({
       </div>
     </div>
   )
+}
+
+function InvocationStatus({ status }: { status: string }) {
+  if (status === 'synced') return <Badge variant="green">synced</Badge>
+  if (status === 'failed') return <Badge variant="red">failed</Badge>
+  if (status === 'not_submitted') return <Badge variant="red">not submitted</Badge>
+  return <Badge variant="yellow">{status}</Badge>
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

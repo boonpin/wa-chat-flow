@@ -96,6 +96,15 @@ column order — so sales and support capture are two **rows**, not two code
 paths. `tool_invocations` records every capture *before* the sink is called, so
 a Google outage costs the sync and not the lead.
 
+`tool_invocations.args` and `.payload` are **not the same data**: `args` is what
+the model passed, keyed by field name; `payload` is what the sink actually
+transmitted, keyed by sheet column label and carrying the contact and
+conversation columns too. The sink returns its own payload (the wire format is
+its business) with credentials stripped — **never store or display `sinkSecret`.**
+`payload` is null exactly when nothing was sent, which is the `not_submitted`
+status: a misconfigured tool, distinct from a request that was sent and
+rejected. One is fixed in the dashboard, the other by retrying.
+
 ## Conventions
 
 - Schema changes: edit `lib/db/schema.ts`, then `pnpm db:generate`. Never add raw `CREATE TABLE` / `ALTER TABLE` to startup code.

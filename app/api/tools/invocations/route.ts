@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
       contactName: contacts.name,
       contactPhone: contacts.phoneNumber,
       args: toolInvocations.args,
+      payload: toolInvocations.payload,
       status: toolInvocations.status,
       error: toolInvocations.error,
       createdAt: toolInvocations.createdAt,
@@ -41,14 +42,18 @@ export async function GET(req: NextRequest) {
   const rows = query.all()
 
   return NextResponse.json(
-    rows.map((row) => ({ ...row, args: safeParse(row.args) }))
+    rows.map((row) => ({
+      ...row,
+      args: safeParse(row.args) ?? {},
+      payload: row.payload ? safeParse(row.payload) : null,
+    }))
   )
 }
 
-function safeParse(raw: string): Record<string, unknown> {
+function safeParse(raw: string): Record<string, unknown> | null {
   try {
     return JSON.parse(raw) as Record<string, unknown>
   } catch {
-    return {}
+    return null
   }
 }

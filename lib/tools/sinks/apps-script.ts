@@ -22,11 +22,16 @@ const REQUEST_TIMEOUT_MS = 10_000
 export class AppsScriptSink implements CaptureSink {
   async append(tool: ToolRow, row: CaptureRow): Promise<SinkResult> {
     if (!tool.sinkUrl) {
-      return { ok: false, error: 'No Apps Script URL configured for this tool' }
+      return {
+        ok: false,
+        submitted: false,
+        error: 'No Apps Script URL configured for this tool — nothing was sent anywhere',
+      }
     }
 
+    // The body carries the shared secret; `payload` is the same thing with the
+    // credential dropped, and is what gets recorded and shown in the log.
     const payload = {
-      secret: tool.sinkSecret ?? '',
       sheet: tool.sheetTab,
       conversationId: row.conversationId,
       capturedAt: row.capturedAt,
@@ -34,13 +39,14 @@ export class AppsScriptSink implements CaptureSink {
       contactPhone: row.contactPhone,
       values: row.values,
     }
+    const body = { secret: tool.sinkSecret ?? '', ...payload }
 
     let response: Response
     try {
       response = await fetch(tool.sinkUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         cache: 'no-store',
         // Apps Script answers /exec with a 302 to script.googleusercontent.com.
@@ -48,35 +54,48 @@ export class AppsScriptSink implements CaptureSink {
       })
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
-      return { ok: false, error: `Cannot reach Apps Script: ${reason}` }
+      // The request was attempted — it just did not arrive.
+      return { ok: false, submitted: true, payload, error: `Cannot reach Apps Script: ${reason}` }
     }
 
-    const body = await response.text().catch(() => '')
+    const responseText = await response.text().catch(() => '')
 
     if (!response.ok) {
-      return { ok: false, error: `Apps Script returned ${response.status}: ${truncate(body)}` }
+      return {
+        ok: false,
+        submitted: true,
+        payload,
+        error: `Apps Script returned ${response.status}: ${truncate(responseText)}`,
+      }
     }
 
     // Apps Script happily returns 200 with an HTML error page when the
     // deployment is misconfigured, so a status check alone is not enough.
     try {
-      const parsed = JSON.parse(body) as { ok?: boolean; error?: string }
+      const parsed = JSON.parse(responseText) as { ok?: boolean; error?: string }
       if (parsed.ok === false) {
-        return { ok: false, error: parsed.error || 'Apps Script rejected the row' }
+        return { ok: false, submitted: true, payload, error: parsed.error || 'Apps Script rejected the row' }
       }
       if (parsed.ok !== true) {
-        return { ok: false, error: `Unexpected Apps Script response: ${truncate(body)}` }
+        return {
+          ok: false,
+          submitted: true,
+          payload,
+          error: `Unexpected Apps Script response: ${truncate(responseText)}`,
+        }
       }
     } catch {
       return {
         ok: false,
+        submitted: true,
+        payload,
         error:
           'Apps Script did not return JSON. Check the deployment is set to ' +
-          `"Execute as: Me" and "Who has access: Anyone". Got: ${truncate(body)}`,
+          `"Execute as: Me" and "Who has access: Anyone". Got: ${truncate(responseText)}`,
       }
     }
 
-    return { ok: true }
+    return { ok: true, submitted: true, payload }
   }
 }
 

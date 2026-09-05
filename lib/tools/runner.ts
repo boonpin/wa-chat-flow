@@ -58,8 +58,15 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
   })
 
   if (!result.ok) {
+    // `not_submitted` means nothing ever left the app — a misconfigured tool,
+    // not a network or sheet problem. The operator needs to tell those apart:
+    // one is fixed in the dashboard, the other by retrying.
     db.update(toolInvocations)
-      .set({ status: 'failed', error: result.error ?? 'Sink write failed' })
+      .set({
+        status: result.submitted ? 'failed' : 'not_submitted',
+        error: result.error ?? 'Sink write failed',
+        payload: result.payload ? JSON.stringify(result.payload) : null,
+      })
       .where(eq(toolInvocations.id, invocationId))
       .run()
 
@@ -79,7 +86,12 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
   }
 
   db.update(toolInvocations)
-    .set({ status: 'synced', error: null, syncedAt: new Date().toISOString() })
+    .set({
+      status: 'synced',
+      error: null,
+      payload: result.payload ? JSON.stringify(result.payload) : null,
+      syncedAt: new Date().toISOString(),
+    })
     .where(eq(toolInvocations.id, invocationId))
     .run()
 
@@ -114,11 +126,12 @@ export async function retryInvocation(invocationId: string): Promise<ToolResult>
   })
 
   db.update(toolInvocations)
-    .set(
-      result.ok
-        ? { status: 'synced', error: null, syncedAt: new Date().toISOString() }
-        : { status: 'failed', error: result.error ?? 'Sink write failed' }
-    )
+    .set({
+      status: result.ok ? 'synced' : result.submitted ? 'failed' : 'not_submitted',
+      error: result.ok ? null : (result.error ?? 'Sink write failed'),
+      payload: result.payload ? JSON.stringify(result.payload) : null,
+      ...(result.ok ? { syncedAt: new Date().toISOString() } : {}),
+    })
     .where(eq(toolInvocations.id, invocationId))
     .run()
 
@@ -127,7 +140,7 @@ export async function retryInvocation(invocationId: string): Promise<ToolResult>
 
 async function pushToSink(tool: ToolRow, row: Parameters<CaptureSink['append']>[1]) {
   const sink = sinks[tool.sinkType]
-  if (!sink) return { ok: false, error: `Unknown sink type: ${tool.sinkType}` }
+  if (!sink) return { ok: false, submitted: false, error: `Unknown sink type: ${tool.sinkType}` }
   return sink.append(tool, row)
 }
 

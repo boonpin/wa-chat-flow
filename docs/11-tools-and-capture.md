@@ -131,9 +131,22 @@ excluded from the AI's own memory of the conversation.
 ### Inspecting a run
 
 On the **Logs** page, click any row to open its details. For a tool run that
-shows what was captured, which sheet tab it went to, whether the sync
-succeeded, and the sink error if it did not — with a **Retry sync** button. A
-clean run shows *"None — this event completed cleanly."* under Error.
+shows:
+
+- **Submitted to sheet** — the exact columns that went over the wire, by their
+  sheet header. If nothing was sent it says *"No submission — nothing was sent"*
+  rather than showing you data that never left the app.
+- **What the AI passed** (collapsed) — the raw field keys before they were
+  mapped onto column headers. Open this when the sheet columns are not what you
+  expected.
+- The sink error, and a **Retry sync** button for anything not yet synced.
+
+A clean run shows *"None — this event completed cleanly."* under Error.
+
+> The two lists differ on purpose. The AI passes `product`; the sheet receives
+> `Interested Product`. The submitted payload also carries Captured At, Contact
+> Name, Phone and Conversation ID, which the AI never sees. The shared secret is
+> never recorded or displayed.
 
 Three outcomes are worth telling apart:
 
@@ -141,6 +154,7 @@ Three outcomes are worth telling apart:
 | :--- | :--- |
 | `sent`, no error | Captured and written to the sheet. |
 | `failed`, sink error | Captured here, sheet write failed. Retryable — nothing lost. |
+| `failed`, "No Apps Script URL configured" | The tool was never finished. Nothing was transmitted; the capture is safe. Set the URL, then retry. |
 | `failed`, "Missing required details…" | The AI called the tool too early. Nothing was captured; it asked the customer for the rest. Normal, not a fault. |
 
 ---
@@ -152,8 +166,10 @@ shows the same failures in the context of the conversation they came from.
 
 | Status | Meaning |
 | :--- | :--- |
-| `synced` | Written to the sheet. |
-| `failed` | Saved here, but the sheet write did not go through. |
+| `synced` | Sent and written to the sheet. |
+| `failed` | Sent, but the sheet rejected it or was unreachable. |
+| `not submitted` | **Nothing was sent at all** — the tool has no Apps Script URL. Finish configuring it, then retry. |
+| `pending` | The app stopped mid-write. Retry. |
 
 **A failed capture is not a lost lead.** The details are written to the database
 *before* the sheet is called, so a wrong URL, an expired deployment or a Google
