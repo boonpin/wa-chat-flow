@@ -11,9 +11,11 @@ import {
 } from '@/lib/conversation/service'
 import { buildHistory } from '@/lib/ai/context'
 import { resolveHandler } from '@/lib/ai/handler'
+import { resolveTools } from '@/lib/tools/registry'
 import { selectBot } from './bot-selection'
 import { sendOutgoingMessage } from './outgoing'
 import type { IncomingMessage } from '@/lib/wa/types'
+import type { ToolRun } from '@/lib/tools/types'
 
 /**
  * The single entry point for every inbound WhatsApp message, regardless of
@@ -146,7 +148,15 @@ export async function runAutoReply(persisted: PersistedIncoming): Promise<AutoRe
       message: text,
       contact: { name: contact.name, phone: contact.phoneNumber },
       conversationId: conversation.id,
+      contactId: contact.id,
+      tools: resolveTools(bot.id),
     })
+
+    // Tool runs are recorded even when the model then falls silent, so an
+    // operator can see that a lead was captured on a thread that looks stalled.
+    for (const run of output.toolRuns ?? []) {
+      recordToolRun(conversation.id, contact.id, incoming.provider, run)
+    }
 
     const reply = output.text.trim()
     if (!reply) return { status: 'skipped', reason: 'empty_reply' }
@@ -181,6 +191,45 @@ export async function handleIncomingMessage(
   const persisted = persistIncomingMessage(incoming)
   if (persisted.status === 'duplicate') return persisted
   return runAutoReply(persisted)
+}
+
+/**
+ * Notes a tool run in the transcript.
+ *
+ * `message_type = 'tool'` keeps it out of `buildHistory`, which only feeds text
+ * back to the model — the model already saw the call in its own loop, and
+ * replaying it as dialogue would confuse the next turn. The Inbox renders
+ * `sender_type = 'system'` as a centred notice, so it shows up with no UI work.
+ *
+ * A sink failure is logged as `failed` even though the model was told the
+ * capture succeeded: the customer should not be re-asked for details we already
+ * hold, but the operator does need to see that the sheet is out of sync.
+ */
+function recordToolRun(
+  conversationId: string,
+  contactId: string,
+  provider: string,
+  run: ToolRun
+): void {
+  const error = run.result.ok ? run.result.syncError : run.result.error
+
+  db.insert(messages)
+    .values({
+      id: uuidv4(),
+      conversationId,
+      contactId,
+      provider,
+      providerMessageId: null,
+      direction: 'outgoing',
+      senderType: 'system',
+      messageType: 'tool',
+      content: `Ran tool: ${run.call.name}`,
+      status: error ? 'failed' : 'sent',
+      error: error ?? null,
+      toolInvocationId: run.result.ok ? (run.result.invocationId ?? null) : null,
+      createdAt: new Date().toISOString(),
+    })
+    .run()
 }
 
 /**

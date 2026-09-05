@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, index, uniqueIndex, primaryKey } from 'drizzle-orm/sqlite-core'
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -87,6 +87,8 @@ export const messages = sqliteTable(
     content: text('content').notNull().default(''),
     status: text('status').notNull().default('received'), // received | processing | sent | failed
     error: text('error'),
+    /** Set on `message_type = 'tool'` rows, linking to what the call actually captured. */
+    toolInvocationId: text('tool_invocation_id'),
     createdAt: text('created_at').notNull(),
   },
   (t) => [
@@ -130,4 +132,75 @@ export const blastRecipients = sqliteTable(
     sentAt: text('sent_at'),
   },
   (t) => [index('idx_blast_recipients_campaign_status').on(t.campaignId, t.status)]
+)
+
+/**
+ * A capability the AI can invoke mid-conversation. `sheet_capture` — the only
+ * kind today — collects a configurable set of fields from the customer and
+ * appends them to a Google Sheet. Sales and support are two rows here, not two
+ * code paths: `fields` drives the schema the model sees, the server-side
+ * validation, and the sheet column order all at once.
+ */
+export const tools = sqliteTable('tools', {
+  id: text('id').primaryKey(),
+  /** The function name the LLM sees. Must match /^[a-z][a-z0-9_]*$/. */
+  name: text('name').notNull().unique(),
+  kind: text('kind').notNull().default('sheet_capture'),
+  /** Shown to the model. This *is* the routing logic — it decides sales vs support. */
+  description: text('description').notNull(),
+  /** Transport that writes the row. Only 'apps_script' today. */
+  sinkType: text('sink_type').notNull().default('apps_script'),
+  /** Apps Script /exec URL. A bearer secret — never returned to the client. */
+  sinkUrl: text('sink_url'),
+  /** Shared token echoed in the POST body, so the URL alone cannot write. */
+  sinkSecret: text('sink_secret'),
+  /** The human-facing sheet link. Display only; writes go through sinkUrl. */
+  spreadsheetUrl: text('spreadsheet_url'),
+  /** Tab within the spreadsheet, e.g. "Leads" or "Support". */
+  sheetTab: text('sheet_tab').notNull().default('Sheet1'),
+  /** JSON array of ToolField — see lib/tools/types.ts. */
+  fields: text('fields').notNull().default('[]'),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+})
+
+/** Which tools a bot may call. A bot with no rows here behaves exactly as before. */
+export const botTools = sqliteTable(
+  'bot_tools',
+  {
+    botId: text('bot_id').notNull(),
+    toolId: text('tool_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.botId, t.toolId] }),
+    index('idx_bot_tools_bot').on(t.botId),
+  ]
+)
+
+/**
+ * Every capture attempt, written *before* the sink is called.
+ *
+ * Same reasoning as outgoing messages: if Google is unreachable or the script
+ * is misconfigured, the lead is still on disk and visibly failed, rather than
+ * silently lost. This table is also the retry queue.
+ */
+export const toolInvocations = sqliteTable(
+  'tool_invocations',
+  {
+    id: text('id').primaryKey(),
+    toolId: text('tool_id').notNull(),
+    conversationId: text('conversation_id').notNull(),
+    contactId: text('contact_id').notNull(),
+    /** JSON object of validated field values. */
+    args: text('args').notNull(),
+    status: text('status').notNull().default('pending'), // pending | synced | failed
+    error: text('error'),
+    createdAt: text('created_at').notNull(),
+    syncedAt: text('synced_at'),
+  },
+  (t) => [
+    index('idx_tool_invocations_conversation').on(t.conversationId, t.createdAt),
+    index('idx_tool_invocations_status').on(t.status, t.createdAt),
+  ]
 )

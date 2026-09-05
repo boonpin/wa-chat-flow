@@ -1,0 +1,91 @@
+import { NextResponse } from 'next/server'
+import { getSession } from '@/lib/auth/session'
+import { db } from '@/lib/db'
+import { contacts, conversations, messages, toolInvocations, tools } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
+
+/**
+ * Everything known about one log entry.
+ *
+ * The list feed stays deliberately thin — this is what the Logs detail drawer
+ * opens. For a tool row it also resolves the linked capture, which is where the
+ * interesting failure lives: the model may have been told the capture succeeded
+ * while the sheet write did not.
+ */
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id } = await params
+
+  const row = db
+    .select({
+      id: messages.id,
+      conversationId: messages.conversationId,
+      direction: messages.direction,
+      senderType: messages.senderType,
+      messageType: messages.messageType,
+      message: messages.content,
+      status: messages.status,
+      error: messages.error,
+      provider: messages.provider,
+      providerMessageId: messages.providerMessageId,
+      toolInvocationId: messages.toolInvocationId,
+      createdAt: messages.createdAt,
+      contactId: messages.contactId,
+      contactName: contacts.name,
+      contactPhone: contacts.phoneNumber,
+      conversationMode: conversations.mode,
+      conversationStatus: conversations.status,
+    })
+    .from(messages)
+    .leftJoin(contacts, eq(messages.contactId, contacts.id))
+    .leftJoin(conversations, eq(messages.conversationId, conversations.id))
+    .where(eq(messages.id, id))
+    .get()
+
+  if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  return NextResponse.json({ ...row, invocation: resolveInvocation(row.toolInvocationId) })
+}
+
+/**
+ * The capture behind a tool row.
+ *
+ * Returns null for rows that never wrote one — a call the model made with
+ * missing fields is rejected before anything is stored, so the message row's
+ * own `error` is the whole story there.
+ */
+function resolveInvocation(invocationId: string | null) {
+  if (!invocationId) return null
+
+  const invocation = db
+    .select({
+      id: toolInvocations.id,
+      toolId: toolInvocations.toolId,
+      toolName: tools.name,
+      sheetTab: tools.sheetTab,
+      spreadsheetUrl: tools.spreadsheetUrl,
+      args: toolInvocations.args,
+      status: toolInvocations.status,
+      error: toolInvocations.error,
+      createdAt: toolInvocations.createdAt,
+      syncedAt: toolInvocations.syncedAt,
+    })
+    .from(toolInvocations)
+    .leftJoin(tools, eq(toolInvocations.toolId, tools.id))
+    .where(eq(toolInvocations.id, invocationId))
+    .get()
+
+  if (!invocation) return null
+
+  return { ...invocation, args: safeParse(invocation.args) }
+}
+
+function safeParse(raw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}

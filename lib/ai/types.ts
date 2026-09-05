@@ -1,4 +1,5 @@
 import type { aiBots } from '@/lib/db/schema'
+import type { ToolDefinition, ToolRun } from '@/lib/tools/types'
 
 export type Bot = typeof aiBots.$inferSelect
 
@@ -16,10 +17,15 @@ export interface AIInput {
   message: string
   contact: { name: string | null; phone: string }
   conversationId: string
+  contactId: string
+  /** Tools this bot may call. Omitted or empty = plain completion, as before. */
+  tools?: ToolDefinition[]
 }
 
 export interface AIOutput {
   text: string
+  /** What the model ran and how each went, so the caller can leave an audit trail. */
+  toolRuns?: ToolRun[]
 }
 
 /**

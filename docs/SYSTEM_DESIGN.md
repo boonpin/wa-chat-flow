@@ -36,7 +36,8 @@ graph TD
 - **Webhook Receiver (`app/api/webhooks/waha/`):** Verifies an HMAC signature, normalises the payload and hands off. It contains no AI logic and acknowledges before the reply is generated.
 - **Message Handler (`lib/messaging/incoming-handler.ts`):** The single entry point for inbound messages from any transport — deduplicate, resolve contact and conversation, store, then decide whether the AI answers.
 - **Conversation Layer (`lib/conversation/`):** Threads that group messages, carry AUTO/HUMAN mode and OPEN/RESOLVED status, and back the Inbox.
-- **AI Handler (`lib/ai/`):** An `AIHandler` interface. `DirectAIHandler` calls OpenAI or Gemini with the bot prompt plus recent history; an `AgentRuntimeHandler` will slot in behind the same interface.
+- **AI Handler (`lib/ai/`):** An `AIHandler` interface. `DirectAIHandler` calls OpenAI or Gemini with the bot prompt plus recent history, and owns the tool loop; an `AgentRuntimeHandler` will slot in behind the same interface.
+- **Tools (`lib/tools/`):** Capabilities the AI can invoke mid-conversation. `registry.ts` turns configured rows into the function schemas a model sees, `runner.ts` executes one call, and a `CaptureSink` writes the result out. Business logic never imports a sink directly.
 - **Persistent Data Layer:** **Better-SQLite3** in WAL mode with **Drizzle ORM** and versioned SQL migrations.
 - **Middleware Security:** Cookie-session auth for the dashboard and API; the webhook route is exempt and authenticated by HMAC instead.
 
@@ -65,6 +66,29 @@ Each incoming message runs through:
 3. **Conversation Mode:** `auto` lets the AI answer; `human` leaves the thread to an operator.
 4. **Bot Selection:** Conversation bot → contact bot → system default → the bot flagged default. Disabled bots are skipped.
 5. **Context:** The bot prompt plus the last ~20 text messages of that conversation.
+6. **Tools:** Whatever the selected bot has been assigned, capped at 3 call rounds per reply.
+
+### 3.6 Tools
+A bot can be given tools it may call mid-conversation. The only kind today is
+`sheet_capture`: the model collects a configured set of fields and they are
+appended to a Google Sheet.
+
+Sales and support capture are two rows in `tools`, not two code paths — the
+field list drives the JSON Schema the model sees, the server-side validation and
+the sheet column order at once, so adding a field is a dashboard edit.
+
+The loop lives in `DirectAIHandler`: ask the model, run what it asked for, feed
+the results back, ask again. A validation failure is returned to the model as a
+normal result rather than thrown, which is what turns it into natural
+slot-filling — the model reads "missing Email" and asks the customer for it.
+On the final round tools are withdrawn, so a model stuck on a failing tool
+cannot loop.
+
+A public sheet link is not writable — the Sheets API needs OAuth or a service
+account — so writes go through an Apps Script Web App deployed on the sheet
+itself, behind a `CaptureSink` interface. Every capture is written to
+`tool_invocations` *before* the sink is called, so a Google outage costs the
+sync and not the lead; failed rows are retryable from the dashboard.
 
 ### 3.4 Human Inbox
 Conversations are the operational unit. The Inbox lists them by Open / Resolved
@@ -177,7 +201,8 @@ tarball (`WAHA_STORAGE_DIR`).
 ---
 
 ## 8. Future Roadmap
-- **Agent Runtime Handler:** A second `AIHandler` (`handler_type = external_agent`) delegating to an agent service that owns RAG, knowledge base, MCP and tools.
+- **Agent Runtime Handler:** A second `AIHandler` (`handler_type = external_agent`) delegating to an agent service that owns RAG, knowledge base and MCP.
+- **Service-account sink:** A second `CaptureSink` calling the Sheets API directly, for deployments that would rather manage a GCP service account than an Apps Script deployment.
 - **Media Handling:** Storing and displaying images, audio and documents rather than recording their type only.
 - **Outbound Sync:** Capturing messages the operator sends from the phone itself (`fromMe` events).
 - **History Summarization:** Summarising long threads instead of truncating to the last 20 messages.

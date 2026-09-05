@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { aiBots, systemSettings } from '@/lib/db/schema'
+import { aiBots, botTools, systemSettings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
-import { readBotInput, toPublicBot } from '../serialize'
+import { readBotInput, setBotTools, toPublicBot } from '../serialize'
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -20,10 +20,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     db.update(systemSettings).set({ defaultBotId: id }).where(eq(systemSettings.id, 'default')).run()
   }
 
+  // toolIds lives in bot_tools, not on the bot row — split it off before the update.
+  const { toolIds, ...columns } = input
+
   db.update(aiBots)
-    .set({ ...input, updatedAt: new Date().toISOString() })
+    .set({ ...columns, updatedAt: new Date().toISOString() })
     .where(eq(aiBots.id, id))
     .run()
+
+  if (toolIds) setBotTools(id, toolIds)
 
   const bot = db.select().from(aiBots).where(eq(aiBots.id, id)).get()
   return NextResponse.json(bot ? toPublicBot(bot) : null)
@@ -36,6 +41,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
 
   db.delete(aiBots).where(eq(aiBots.id, id)).run()
+  db.delete(botTools).where(eq(botTools.botId, id)).run()
 
   // Do not leave the system pointing at a bot that no longer exists.
   const settings = db.select().from(systemSettings).where(eq(systemSettings.id, 'default')).get()

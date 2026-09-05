@@ -8,6 +8,20 @@
       "when": 1788596397518,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788617599396,
+      "tag": "0001_typical_skullbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788618902089,
+      "tag": "0002_bumpy_richard_fisk",
+      "breakpoints": true
     }
   ]
 }

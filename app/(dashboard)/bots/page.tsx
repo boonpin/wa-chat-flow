@@ -14,6 +14,17 @@ interface Bot {
   handlerType: string
   enabled: boolean
   isDefault: boolean
+  toolIds: string[]
+}
+
+/** Only what the assignment checklist needs — the Tools page owns the rest. */
+interface ToolSummary {
+  id: string
+  name: string
+  description: string
+  sheetTab: string
+  enabled: boolean
+  hasSinkUrl: boolean
 }
 
 const EMPTY_BOT = {
@@ -24,6 +35,7 @@ const EMPTY_BOT = {
   prompt: '',
   enabled: true,
   isDefault: false,
+  toolIds: [] as string[],
 }
 
 const PROMPT_TEMPLATES = [
@@ -48,6 +60,7 @@ const MODELS: Record<string, string[]> = {
 
 export default function BotsPage() {
   const [bots, setBots] = useState<Bot[]>([])
+  const [tools, setTools] = useState<ToolSummary[]>([])
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null)
   const [form, setForm] = useState({ ...EMPTY_BOT })
   const [isNew, setIsNew] = useState(false)
@@ -62,7 +75,15 @@ export default function BotsPage() {
     return data
   }
 
-  useEffect(() => { fetchBots() }, [])
+  async function fetchTools() {
+    const r = await fetch('/api/tools')
+    if (r.ok) setTools(await r.json())
+  }
+
+  useEffect(() => {
+    fetchBots()
+    fetchTools()
+  }, [])
 
   function openNew() {
     const f = { ...EMPTY_BOT }
@@ -82,6 +103,7 @@ export default function BotsPage() {
       prompt: bot.prompt,
       enabled: bot.enabled,
       isDefault: bot.isDefault,
+      toolIds: bot.toolIds ?? [],
     })
     setSelectedBot(bot)
     setIsNew(false)
@@ -298,6 +320,58 @@ export default function BotsPage() {
                     required
                   />
                   <p className="text-xs text-[#94A3B8] mt-1">This is the AI&apos;s personality and instructions</p>
+                </div>
+
+                {/* Tools */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-medium text-[#0F172A]">Tools</label>
+                    <a href="/tools" className="text-xs text-[#16A34A] hover:underline">Manage tools</a>
+                  </div>
+                  {tools.length === 0 ? (
+                    <p className="text-xs text-[#94A3B8] py-2">
+                      No tools configured yet. Create one under Tools to let this bot capture
+                      details into a Google Sheet.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {tools.map(tool => {
+                        const checked = form.toolIds.includes(tool.id)
+                        return (
+                          <label
+                            key={tool.id}
+                            className="flex items-start gap-2.5 py-2 px-3 bg-[#F8FAFC] rounded-lg cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e =>
+                                updateForm(
+                                  'toolIds',
+                                  e.target.checked
+                                    ? [...form.toolIds, tool.id]
+                                    : form.toolIds.filter(id => id !== tool.id)
+                                )
+                              }
+                              className="mt-0.5 accent-[#16A34A]"
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-[#0F172A]">{tool.name}</span>
+                                <Badge variant="blue" size="sm">{tool.sheetTab}</Badge>
+                                {!tool.enabled && <Badge variant="gray" size="sm">Disabled</Badge>}
+                                {!tool.hasSinkUrl && <Badge variant="red" size="sm">No sheet</Badge>}
+                              </div>
+                              <p className="text-xs text-[#475569] line-clamp-1">{tool.description}</p>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <p className="text-xs text-[#94A3B8] mt-1.5">
+                    The AI decides when to call these based on each tool&apos;s description
+                  </p>
                 </div>
 
                 {/* Enabled toggle */}

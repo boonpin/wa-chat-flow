@@ -4,7 +4,7 @@ import { aiBots, systemSettings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
 import { v4 as uuidv4 } from 'uuid'
-import { toPublicBot, readBotInput } from './serialize'
+import { toPublicBot, readBotInput, setBotTools } from './serialize'
 
 export async function GET() {
   const session = await getSession()
@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
   if (input.isDefault) {
     db.update(systemSettings).set({ defaultBotId: id }).where(eq(systemSettings.id, 'default')).run()
   }
+
+  if (input.toolIds) setBotTools(id, input.toolIds)
 
   const bot = db.select().from(aiBots).where(eq(aiBots.id, id)).get()
   return NextResponse.json(bot ? toPublicBot(bot) : null)
