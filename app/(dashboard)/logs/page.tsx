@@ -51,89 +51,205 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleString()
 }
 
+const PAGE_SIZES = [25, 50, 100]
+
 export default function LogsPage() {
   const [logs, setLogs] = useState<MessageLog[]>([])
+  const [total, setTotal] = useState(0)
+  const [lastPage, setLastPage] = useState(1)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/messages?limit=200')
+    const res = await fetch(`/api/messages?page=${page}&pageSize=${pageSize}`)
     const data = await res.json()
-    setLogs(Array.isArray(data) ? data : [])
+    setLogs(Array.isArray(data.rows) ? data.rows : [])
+    setTotal(data.total ?? 0)
+    setLastPage(data.lastPage ?? 1)
+    // The server clamps the page to what exists; follow it so the controls
+    // cannot sit on a page number the data no longer has.
+    if (typeof data.page === 'number' && data.page !== page) setPage(data.page)
     setLoading(false)
-  }, [])
+  }, [page, pageSize])
 
   useEffect(() => {
-    // Polling: the state update lands after the fetch resolves, not during render.
+    // The state update lands after the fetch resolves, not during render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
+
+    // Only page 1 is a live view. Polling while someone reads page 4 would
+    // shuffle rows out from under them as new messages arrive.
+    if (page !== 1) return
     const interval = setInterval(load, 5000)
     return () => clearInterval(interval)
-  }, [load])
+  }, [load, page])
+
+  const first = total === 0 ? 0 : (page - 1) * pageSize + 1
+  const last = Math.min(page * pageSize, total)
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-8 max-w-6xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[#0F172A]">Message Logs</h1>
           <p className="text-sm text-[#475569] mt-0.5">
-            Everything sent and received (auto-refreshes every 5s). Click an entry for details.
+            Everything sent and received. Click a row for details.
+            {page === 1 ? ' Page 1 auto-refreshes every 5s.' : ' Auto-refresh pauses off page 1.'}
           </p>
         </div>
-        <button onClick={load} className="text-xs text-[#16A34A] hover:underline">
+        <button onClick={load} className="text-xs text-[#16A34A] hover:underline cursor-pointer">
           Refresh
         </button>
       </div>
 
-      {loading ? (
-        <Card className="p-5 text-sm text-[#94A3B8]">Loading...</Card>
-      ) : logs.length === 0 ? (
-        <Card className="p-5 text-sm text-[#94A3B8]">No messages yet.</Card>
-      ) : (
-        <div className="space-y-2">
-          {logs.map((log) => {
-            const badge = SENDER_BADGE[log.senderType] ?? SENDER_BADGE.customer
-            return (
-              <Card key={log.id} className="hover:border-[#CBD5E1] hover:shadow-sm transition-all">
-                <button
-                  type="button"
-                  onClick={() => setOpenId(log.id)}
-                  className="w-full text-left px-4 py-3 flex gap-4 items-start cursor-pointer rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A]"
-                >
-                  <div className="shrink-0 pt-0.5">
-                    <Badge variant={badge.variant}>{badge.label}</Badge>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-xs font-medium text-[#0F172A]">
-                        {log.contactName || log.contactPhone || log.contactId}
-                      </span>
-                      {log.contactPhone && log.contactName && (
-                        <span className="text-xs text-[#94A3B8]">{log.contactPhone}</span>
-                      )}
-                      {log.status === 'failed' && <Badge variant="red" size="sm">Failed</Badge>}
-                      {log.status === 'processing' && <Badge variant="yellow" size="sm">Sending</Badge>}
-                      {log.messageType !== 'text' && <Badge variant="gray" size="sm">{log.messageType}</Badge>}
-                    </div>
-
-                    {log.message && <p className="text-sm text-[#334155] break-words">{log.message}</p>}
-                    {log.error && <p className="text-xs text-[#DC2626] break-words mt-0.5">{log.error}</p>}
-                  </div>
-
-                  <div className="shrink-0 text-xs text-[#94A3B8] whitespace-nowrap pt-0.5">
-                    {formatTime(log.createdAt)}
-                  </div>
-                </button>
-              </Card>
-            )
-          })}
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#E6EAF0] bg-[#F8FAFC]">
+                <Th className="w-40">Time</Th>
+                <Th className="w-16">From</Th>
+                <Th className="w-52">Contact</Th>
+                <Th>Message</Th>
+                <Th className="w-28">Status</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <EmptyRow>Loading...</EmptyRow>
+              ) : logs.length === 0 ? (
+                <EmptyRow>No messages yet.</EmptyRow>
+              ) : (
+                logs.map((log) => {
+                  const badge = SENDER_BADGE[log.senderType] ?? SENDER_BADGE.customer
+                  return (
+                    <tr
+                      key={log.id}
+                      onClick={() => setOpenId(log.id)}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setOpenId(log.id)
+                        }
+                      }}
+                      className="border-b border-[#F1F5F9] last:border-0 cursor-pointer hover:bg-[#F8FAFC] focus:outline-none focus-visible:bg-[#F0FDF4] transition-colors"
+                    >
+                      <td className="px-4 py-2.5 text-xs text-[#94A3B8] whitespace-nowrap align-top">
+                        {formatTime(log.createdAt)}
+                      </td>
+                      <td className="px-4 py-2.5 align-top">
+                        <Badge variant={badge.variant}>{badge.label}</Badge>
+                      </td>
+                      <td className="px-4 py-2.5 align-top">
+                        <p className="text-xs font-medium text-[#0F172A] truncate">
+                          {log.contactName || log.contactPhone || log.contactId}
+                        </p>
+                        {log.contactName && log.contactPhone && (
+                          <p className="text-xs text-[#94A3B8] truncate">{log.contactPhone}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 align-top max-w-0">
+                        <div className="flex items-start gap-2">
+                          {log.messageType !== 'text' && (
+                            <Badge variant="gray" size="sm">{log.messageType}</Badge>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            {log.message ? (
+                              <p className="text-sm text-[#334155] truncate">{log.message}</p>
+                            ) : (
+                              <p className="text-sm text-[#CBD5E1]">—</p>
+                            )}
+                            {log.error && (
+                              <p className="text-xs text-[#DC2626] truncate">{log.error}</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 align-top">
+                        <StatusBadge status={log.status} />
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+
+        <div className="flex items-center justify-between gap-4 px-4 py-3 border-t border-[#E6EAF0] bg-[#F8FAFC]">
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-[#475569]">
+              {total === 0 ? 'No entries' : `Showing ${first}–${last} of ${total}`}
+            </p>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                setPage(1)
+              }}
+              className="text-xs border border-[#E6EAF0] rounded-lg px-2 py-1 bg-white text-[#475569] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>{n} per page</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-[#475569] tabular-nums px-1">
+              {page} / {lastPage}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+              disabled={page >= lastPage}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       {openId && <DetailDrawer messageId={openId} onClose={() => setOpenId(null)} onChanged={load} />}
     </div>
   )
+}
+
+function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <th className={`px-4 py-2.5 text-left text-xs font-medium text-[#475569] ${className}`}>
+      {children}
+    </th>
+  )
+}
+
+function EmptyRow({ children }: { children: React.ReactNode }) {
+  return (
+    <tr>
+      <td colSpan={5} className="px-4 py-8 text-center text-sm text-[#94A3B8]">
+        {children}
+      </td>
+    </tr>
+  )
+}
+
+function StatusBadge({ status }: { status: MessageLog['status'] }) {
+  if (status === 'failed') return <Badge variant="red">Failed</Badge>
+  if (status === 'processing') return <Badge variant="yellow">Sending</Badge>
+  if (status === 'sent') return <Badge variant="green">Sent</Badge>
+  return <Badge variant="gray">{status}</Badge>
 }
 
 function DetailDrawer({

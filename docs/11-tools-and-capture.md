@@ -130,7 +130,7 @@ excluded from the AI's own memory of the conversation.
 
 ### Inspecting a run
 
-On the **Logs** page, click any entry to open its details. For a tool run that
+On the **Logs** page, click any row to open its details. For a tool run that
 shows what was captured, which sheet tab it went to, whether the sync
 succeeded, and the sink error if it did not — with a **Retry sync** button. A
 clean run shows *"None — this event completed cleanly."* under Error.

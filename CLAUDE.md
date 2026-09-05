@@ -60,6 +60,7 @@ replaced without touching business logic:
 - [lib/tools/](lib/tools/) — `registry.ts` (config rows → the function schemas a model sees), `runner.ts` (execute one call), `sinks/` (where the row lands)
 - [lib/db/index.ts](lib/db/index.ts) — pragmas, legacy baseline, migrations, default seeding
 - [lib/db/legacy.ts](lib/db/legacy.ts) — one-time in-place upgrade for pre-Drizzle databases
+- [app/api/messages/route.ts](app/api/messages/route.ts) — the Logs feed. Paginated, returning `{ rows, total, page, pageSize, lastPage }`; ordered by `(created_at, id)` because a tie without the id tiebreak can repeat or drop a row across a page boundary
 - [app/api/messages/[id]/route.ts](app/api/messages/[id]/route.ts) — one log entry in full, resolving `messages.tool_invocation_id` into the capture behind a tool row; backs the Logs detail drawer
 - [app/api/webhooks/waha/route.ts](app/api/webhooks/waha/route.ts) — HMAC-verified, deliberately thin; no AI logic here
 - [proxy.ts](proxy.ts) — cookie auth for everything except `/api/webhooks/`
