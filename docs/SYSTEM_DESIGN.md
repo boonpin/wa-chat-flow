@@ -147,23 +147,32 @@ sequenceDiagram
 ---
 
 ## 7. Deployment
+Two independent Compose projects on one host, joined by a shared Docker network:
+
 ```
 Small VPS
 
-Docker Compose
-│
-├── wa-chat-flow          published (behind a TLS reverse proxy)
-│   ├── Next.js
-│   └── /storage/app/app.db
-│
-└── waha                  internal Docker network only
-    └── /storage/waha/*
+waha/docker-compose.yml              docker-compose.yml
+│                                    │
+└── waha                             └── wa-chat-flow   (behind a TLS proxy)
+    ├── 127.0.0.1:3001 only              ├── Next.js
+    └── waha/data/{sessions,media}       └── /storage/app/app.db
+                └────── shared docker network ──────┘
 ```
 
+Keeping them separate means the gateway can be restarted, upgraded or moved to
+another host without redeploying the application. The only shared secret is
+`WAHA_API_KEY`; the coupling is otherwise just two URLs (`WAHA_BASE_URL`
+outbound, `WAHA_WEBHOOK_URL` inbound).
+
 WAHA's API can send messages from the connected number, so it is never exposed
-publicly — WA Chat Flow is the only public-facing service. Both volumes are
-backed up daily (`pnpm backup`, 7 days retained): the SQLite database via
-SQLite's online backup API, and WAHA's session storage as a tarball.
+publicly — WA Chat Flow is the only public-facing service. Note that WAHA has
+**two independent auth systems**: browser basic auth for its dashboard, and the
+`X-Api-Key` header for its REST API. Dashboard access grants no API access.
+
+Both volumes are backed up daily (`pnpm backup`, 7 days retained): the SQLite
+database via SQLite's online backup API, and WAHA's session storage as a
+tarball (`WAHA_STORAGE_DIR`).
 
 ---
 

@@ -1,0 +1,35 @@
+# WA Chat Flow — single-VPS deployment.
+#
+#   Internet ──► wa-chat-flow (:3000) ──► waha (internal network only)
+#
+# WAHA is deliberately not published to the host: WA Chat Flow is the only
+# public-facing service, and it reaches the gateway over the compose network.
+
+services:
+  waha:
+    image: devlikeapro/waha:latest
+    restart: unless-stopped
+    environment:
+      WHATSAPP_API_KEY: ${WAHA_API_KEY}
+      # Bring saved sessions back up after a restart without manual rescans.
+      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+      WAHA_PRINT_QR: "False"
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:-admin}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?-admin}
+    volumes:
+      # Kept OUTSIDE the repo: this is a multi-GB-capable Chromium profile, and
+      # Next.js' build tracer tries to copy anything under the project root.
+      - ./data/sessions:/app/.sessions
+      - ./data/media:/app/.media
+    healthcheck:
+      # /health requires the API key when WHATSAPP_API_KEY is set — without the
+      # header it answers 401 and the container never becomes healthy.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health',{headers:{'X-Api-Key':process.env.WHATSAPP_API_KEY||''}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # Uncomment ONLY for local debugging of the WAHA dashboard. Never in
+    # production — the gateway API can send messages from your number.
+    ports:
+       - "127.0.0.1:3001:3000"

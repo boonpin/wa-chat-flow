@@ -4,6 +4,7 @@ import { waha } from '@/lib/config'
 import { normalizeIncomingMessage, normalizeSessionStatus, type WahaWebhookBody } from '@/lib/wa/normalize'
 import { persistIncomingMessage, runAutoReply } from '@/lib/messaging/incoming-handler'
 import { recordStatus } from '@/lib/wa/sessions'
+import { getProvider } from '@/lib/wa/provider'
 
 /**
  * WAHA event receiver.
@@ -37,7 +38,10 @@ export async function POST(request: NextRequest) {
     switch (body.event) {
       case 'message':
       case 'message.any': {
-        const incoming = normalizeIncomingMessage(body)
+        // Resolving a @lid sender needs a provider round-trip, so this awaits.
+        const incoming = await normalizeIncomingMessage(body, (session, lid) =>
+          getProvider().resolveLid(session, lid)
+        )
         // Groups, our own echoes and malformed events normalise to null.
         if (!incoming) return NextResponse.json({ ok: true, ignored: true })
 

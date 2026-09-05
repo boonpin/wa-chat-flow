@@ -8,10 +8,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx scripts/seed.ts",
+    "seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "backup": "tsx scripts/backup.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
+    "backup": "tsx --env-file-if-exists=.env scripts/backup.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

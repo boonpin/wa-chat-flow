@@ -1,5 +1,5 @@
 import { waha } from '@/lib/config'
-import { toChatId } from './phone'
+import { fromChatId, toChatId } from './phone'
 import type {
   SendResult,
   SendTextInput,
@@ -30,6 +30,9 @@ const STATUS_MAP: Record<string, SessionStatus> = {
 
 /** Events we subscribe each session to. Keep this tight — noise costs writes. */
 const WEBHOOK_EVENTS = ['message', 'session.status']
+
+/** LID → phone number. The mapping does not change, so cache it per process. */
+const lidCache = new Map<string, string | null>()
 
 class WahaError extends Error {
   constructor(message: string, readonly status?: number) {
@@ -82,10 +85,42 @@ async function request<T>(
   }
 }
 
+interface WahaWebhookConfig {
+  url?: string
+  events?: string[]
+  hmac?: { key?: string } | null
+}
+
 interface WahaSessionResponse {
   name: string
   status?: string
   me?: { id?: string; pushName?: string } | null
+  config?: { webhooks?: WahaWebhookConfig[] } | null
+}
+
+/**
+ * True when the live session already has the webhook config we would push.
+ *
+ * Restarting a WORKING session is not free: each restart tears down the browser
+ * and re-handshakes with WhatsApp, and enough churn makes WhatsApp drop the
+ * linked device, forcing the user to scan a new QR code. So we only touch a
+ * healthy session when its configuration has actually drifted.
+ */
+function webhookConfigMatches(session: WahaSessionResponse): boolean {
+  const desired = sessionConfig().webhooks[0]
+  const current = session.config?.webhooks?.find((w) => w.url === desired.url)
+  if (!current) return false
+
+  const hasHmac = !!current.hmac?.key
+  const wantsHmac = !!waha.webhookHmacKey
+  if (hasHmac !== wantsHmac) return false
+
+  const currentEvents = [...(current.events ?? [])].sort()
+  const desiredEvents = [...desired.events].sort()
+  return (
+    currentEvents.length === desiredEvents.length &&
+    currentEvents.every((e, i) => e === desiredEvents[i])
+  )
 }
 
 /** WAHA session config we (re)apply whenever a session is created or started. */
@@ -158,9 +193,9 @@ export class WahaProvider implements WhatsAppProvider {
   }
 
   async startSession(sessionId: string): Promise<void> {
-    const exists = await this.sessionExists(sessionId)
+    const existing = await this.fetchSession(sessionId)
 
-    if (!exists) {
+    if (!existing) {
       await request('POST', '/api/sessions', {
         name: sessionId,
         start: true,
@@ -168,6 +203,10 @@ export class WahaProvider implements WhatsAppProvider {
       })
       return
     }
+
+    // Already connected and correctly configured — do nothing. Restarting here
+    // would risk WhatsApp unlinking the device for no benefit.
+    if (existing.status === 'WORKING' && webhookConfigMatches(existing)) return
 
     // Re-apply the webhook config in case APP_URL or the HMAC key changed.
     await request('PUT', `/api/sessions/${encodeURIComponent(sessionId)}`, {
@@ -230,12 +269,44 @@ export class WahaProvider implements WhatsAppProvider {
     }
   }
 
-  private async sessionExists(sessionId: string): Promise<boolean> {
+  /**
+   * Resolves a `@lid` address to a bare phone number.
+   *
+   * WhatsApp increasingly addresses ordinary one-to-one chats by a
+   * linked identity rather than a phone number. WAHA keeps the mapping, so a
+   * LID message is a real customer we can answer — provided we translate it
+   * first. Results are cached because the mapping is stable.
+   */
+  async resolveLid(sessionId: string, lid: string): Promise<string | null> {
+    const cacheKey = `${sessionId}:${lid}`
+    const cached = lidCache.get(cacheKey)
+    if (cached !== undefined) return cached
+
+    let phone: string | null = null
     try {
-      await request('GET', `/api/sessions/${encodeURIComponent(sessionId)}`)
-      return true
+      const result = await request<{ lid?: string; pn?: string }>(
+        'GET',
+        `/api/${encodeURIComponent(sessionId)}/lids/${encodeURIComponent(lid)}`
+      )
+      phone = result?.pn ? fromChatId(result.pn) || null : null
     } catch (err) {
-      if (err instanceof WahaError && err.status === 404) return false
+      // No mapping yet is a 404, not a failure worth throwing over.
+      if (!(err instanceof WahaError && err.status && err.status < 500)) throw err
+    }
+
+    lidCache.set(cacheKey, phone)
+    return phone
+  }
+
+  /** Returns the raw session, or null when WAHA has never seen it. */
+  private async fetchSession(sessionId: string): Promise<WahaSessionResponse | null> {
+    try {
+      return await request<WahaSessionResponse>(
+        'GET',
+        `/api/sessions/${encodeURIComponent(sessionId)}`
+      )
+    } catch (err) {
+      if (err instanceof WahaError && err.status === 404) return null
       throw err
     }
   }

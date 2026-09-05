@@ -24,7 +24,9 @@ Package manager: **pnpm** (pnpm-lock.yaml present).
 - **TypeScript** (strict mode, path alias `@/*` maps to project root)
 - **Tailwind CSS v4** (via `@tailwindcss/postcss`)
 - **Better-SQLite3 + Drizzle ORM**, versioned SQL migrations in `drizzle/`
-- **WAHA** (WhatsApp HTTP API) as the WhatsApp transport, in its own container
+- **WAHA** (WhatsApp HTTP API) as the WhatsApp transport, deployed **separately**
+  from `waha/` — its own Compose project, own `.env`, own lifecycle. The only
+  shared secret is `WAHA_API_KEY`; see [waha/README.md](waha/README.md).
 
 ## Architecture
 
@@ -55,6 +57,13 @@ replaced without touching business logic:
 - [app/api/webhooks/waha/route.ts](app/api/webhooks/waha/route.ts) — HMAC-verified, deliberately thin; no AI logic here
 - [proxy.ts](proxy.ts) — cookie auth for everything except `/api/webhooks/`
 
+**No `instrumentation.ts`.** Next.js does not apply `outputFileTracingExcludes`
+to the instrumentation entry, so importing the database layer there pulls the
+entire project directory — including runtime state like WAHA's Chromium profile
+— into the standalone build, which fails on broken symlinks. Session
+reconciliation happens lazily instead, via `ensureSessionsReconciled()` in
+[lib/wa/sessions.ts](lib/wa/sessions.ts). Do not reintroduce the hook.
+
 ### Data model
 
 `contacts → conversations → messages`. A contact has at most one **open**
@@ -75,4 +84,7 @@ mode toggle and the Contacts toggle write to both levels, so the two stay in syn
 - Schema changes: edit `lib/db/schema.ts`, then `pnpm db:generate`. Never add raw `CREATE TABLE` / `ALTER TABLE` to startup code.
 - API routes whitelist request fields explicitly; never spread a request body into a DB update.
 - Bot API keys are never returned to the client — `GET /api/bots` sends `hasApiKey: boolean`, and an empty `apiKey` on write means "keep the stored one".
-- No secrets or default credentials in code. Runtime state (`storage/`, `*.db`) is gitignored.
+- No secrets or default credentials in code. Runtime state (`storage/`, `waha/data/`, `*.db`) is gitignored.
+- `waha/` is a separate deployment: never import from it, never assume it shares the app's `.env`, and keep app changes from requiring a gateway redeploy.
+- WAHA has two independent auth systems — browser basic auth for its dashboard, `X-Api-Key` for its REST API. Dashboard access grants no API access.
+- **Inbound addresses:** one-to-one chats arrive as either `@c.us` (phone number) or `@lid` (linked identity — an opaque id, *not* a phone number). Both are real customers. A `@lid` is resolved to its phone via `provider.resolveLid()` before anything is stored; never treat its digits as a number. Groups (`@g.us`), channels (`@newsletter`) and `status@broadcast` are dropped.

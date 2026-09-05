@@ -71,6 +71,8 @@ export async function getLiveStatus(sessionId: string): Promise<SessionStatus> {
 }
 
 export async function listSessions(): Promise<WaSessionView[]> {
+  await ensureSessionsReconciled()
+
   const rows = db.select().from(waSessions).all()
 
   return Promise.all(
@@ -106,23 +108,37 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 /**
- * Re-applies webhook configuration to every known session at boot, so a
- * restarted app (or a changed APP_URL) does not silently stop receiving events.
+ * Re-applies webhook configuration to every known session, so a redeployed app
+ * (or a changed APP_URL / HMAC key) does not silently stop receiving events.
+ *
+ * Runs once per process, lazily, on the first session listing rather than from
+ * `instrumentation.ts`. Next.js does not apply `outputFileTracingExcludes` to
+ * the instrumentation entry, so importing the database layer there dragged the
+ * whole project directory — runtime state included — into the build output.
+ *
+ * `startSession` is a no-op for a session that is already connected with
+ * matching configuration, so this costs one request per session and never
+ * disturbs a healthy WhatsApp link.
  */
-export async function syncSessionsOnBoot(): Promise<void> {
+let reconcilePromise: Promise<void> | null = null
+
+export function ensureSessionsReconciled(): Promise<void> {
+  reconcilePromise ??= reconcileSessions()
+  return reconcilePromise
+}
+
+async function reconcileSessions(): Promise<void> {
   const rows = db.select().from(waSessions).all()
-  if (rows.length === 0) return
 
   for (const row of rows) {
     try {
       const info = await getProvider().getSessionStatus(row.id)
       recordStatus(row.id, info.status)
       if (info.status !== 'offline') {
-        // Session already lives in WAHA — refresh its webhook target.
         await getProvider().startSession(row.id)
       }
     } catch (err) {
-      console.error(`[wa] Boot sync failed for session "${row.sessionName}":`, err)
+      console.error(`[wa] Session reconcile failed for "${row.sessionName}":`, err)
     }
   }
 }

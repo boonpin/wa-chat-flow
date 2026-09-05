@@ -73,4 +73,10 @@ export interface WhatsAppProvider {
 
   /** Returns a `data:` URL for the pairing QR, or null when not pairing. */
   getQrCode(sessionId: string): Promise<string | null>
+
+  /**
+   * Resolves a `@lid` address to a bare phone number, or null when the
+   * provider has no mapping for it.
+   */
+  resolveLid(sessionId: string, lid: string): Promise<string | null>
 }

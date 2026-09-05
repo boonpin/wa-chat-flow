@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   // Runtime state lives beside the code in development. It is mounted as a
   // volume in production and must never be traced into the build output.
   outputFileTracingExcludes: {
-    '*': ['storage/**', 'data/**', 'docs/**', '.wwebjs_cache/**'],
+    '*': ['storage/**', 'data/**', 'waha/**', 'docs/**', '.wwebjs_cache/**'],
   },
 }
 

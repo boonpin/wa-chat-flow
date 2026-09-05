@@ -10,17 +10,21 @@
 
 ## WhatsApp Not Connecting
 
-First check the gateway — most connection problems are WAHA, not the app:
+First check the gateway — most connection problems are WAHA, not the app. It is
+a separate Compose project:
 
 ```bash
-docker compose ps        # is the waha container up and healthy?
-docker compose logs waha
+cd waha
+docker compose ps        # up and healthy?
+docker compose logs -f
 ```
 
 If **Connect** shows *"Could not reach the WhatsApp gateway"*:
 
-- Confirm `WAHA_BASE_URL` points at the gateway (`http://waha:3000` in Compose).
-- Confirm `WAHA_API_KEY` matches the container's `WHATSAPP_API_KEY`.
+- Confirm `WAHA_BASE_URL` points at the gateway (`http://waha:3000` in Compose,
+  `http://127.0.0.1:3001` in local development).
+- Confirm `WAHA_API_KEY` in the app's `.env` **matches** `WAHA_API_KEY` in
+  `waha/.env`. These are two separate files and drift easily.
 
 If the status is stuck:
 
@@ -39,6 +43,60 @@ back to it.
   applied to the session. Click **Connect** on the number again to re-apply the
   webhook configuration.
 - Check the app logs for `Invalid signature` (401) on `/api/webhooks/waha`.
+
+## WAHA API Returns 401 in the Browser
+
+Not a fault. WAHA has two independent auth systems: browser basic auth for the
+dashboard, and the `X-Api-Key` header for the REST API. **Logging into the
+dashboard does not authorise the API**, and an address bar sends no headers.
+
+For a quick browser check, pass the key as a query parameter:
+
+```
+http://localhost:3001/api/sessions?all=true&x-api-key=YOUR_KEY
+```
+
+From a terminal use the header instead:
+
+```bash
+curl -H "X-Api-Key: YOUR_KEY" http://localhost:3001/api/sessions?all=true
+```
+
+## WAHA Dashboard Says "Unauthorized" After Logging In
+
+The dashboard stores its own copy of the API key in the browser
+(`localStorage["servers"]`) and defaults to the literal string `admin`. Logging
+in with the dashboard password does not supply it. Set your real key in the
+dashboard's server settings, or run this in the browser console on the dashboard
+page:
+
+```js
+localStorage.setItem("servers", JSON.stringify([{
+  id: "waha_000000000000000001", name: "WAHA",
+  connection: { url: window.location.origin, key: "YOUR_WAHA_API_KEY" }
+}])); location.reload();
+```
+
+See [waha/README.md](../waha/README.md).
+
+## Log Says "Could not resolve …@lid to a phone number"
+
+WhatsApp addresses some one-to-one chats by a *linked identity* (`@lid`) instead
+of a phone number. These are real customers, and the app resolves them through
+the gateway's LID mapping before storing a contact.
+
+The warning means the gateway has no mapping for that sender yet, so the message
+was dropped rather than filed under a fake number. This usually resolves itself
+once the session has synced contacts. To check what the gateway knows:
+
+```bash
+curl -H "X-Api-Key: YOUR_KEY" \
+  "http://localhost:3001/api/YOUR_SESSION_ID/lids/count"
+curl -H "X-Api-Key: YOUR_KEY" \
+  "http://localhost:3001/api/YOUR_SESSION_ID/lids/THE_LID@lid"
+```
+
+If mappings are consistently missing, reconnect the session so it re-syncs.
 
 ## AI Not Replying
 

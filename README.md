@@ -118,40 +118,50 @@ Responsibility split:
 
 ## Production — Docker Compose (recommended)
 
+The gateway and the application are **two independent deployments**. Bring the
+gateway up first — it creates the network the app joins.
+
 ```bash
 git clone git@github.com:boonpin/wa-chat-flow.git
 cd wa-chat-flow
 
+# 1. Gateway (see waha/README.md for details)
+cd waha
+cp .env.example .env       # WAHA_API_KEY, WAHA_DASHBOARD_PASSWORD
+docker compose up -d
+cd ..
+
+# 2. Application
 cp .env.example .env
 # Fill in, at minimum:
 #   JWT_SECRET              openssl rand -hex 32
-#   WAHA_API_KEY            openssl rand -hex 32
+#   WAHA_API_KEY            must MATCH waha/.env
 #   WAHA_WEBHOOK_HMAC_KEY   openssl rand -hex 32
-#   WAHA_DASHBOARD_PASSWORD
 #   ADMIN_EMAIL / ADMIN_PASSWORD
 #   APP_URL                 https://wa.example.com
+#   WAHA_BASE_URL           http://waha:3000
 
 docker compose up -d --build
 ```
 
-This runs two containers:
-
 ```
 Small VPS
 
-Docker Compose
-│
-├── wa-chat-flow          published on :3000
-│   ├── Next.js
-│   └── /storage/app/app.db
-│
-└── waha                  internal network only
-    └── /storage/waha/*
+waha/docker-compose.yml            docker-compose.yml
+│                                  │
+└── waha                           └── wa-chat-flow      published on :3000
+    ├── 127.0.0.1:3001 only            ├── Next.js
+    └── waha/data/*                    └── /storage/app/app.db
+              └──────── shared docker network ────────┘
 ```
 
-WAHA is intentionally **not** published to the host — its API can send messages
+WAHA is deliberately **not** exposed to the internet — its API can send messages
 from your number, so WA Chat Flow is the only public-facing service. Put a
 reverse proxy (Caddy, nginx, Traefik) with TLS in front of port 3000.
+
+Because the two are separate projects, you can restart, upgrade or relocate the
+gateway without redeploying the app — only `WAHA_API_KEY` must match, and
+`WAHA_BASE_URL` / `WAHA_WEBHOOK_URL` must point the right way.
 
 ## Local development
 
@@ -159,22 +169,21 @@ reverse proxy (Caddy, nginx, Traefik) with TLS in front of port 3000.
 pnpm install
 cp .env.example .env    # set JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
 
-# Run WAHA on its own:
-docker run -d --name waha -p 3001:3000 \
-  -e WHATSAPP_API_KEY=dev-key \
-  -v $(pwd)/storage/waha/sessions:/app/.sessions \
-  devlikeapro/waha:latest
+# Run the gateway from its own compose project:
+cd waha && cp .env.example .env && docker compose up -d && cd ..
 
 # Point the app at it (.env):
-#   WAHA_BASE_URL=http://localhost:3001
-#   WAHA_API_KEY=dev-key
+#   WAHA_BASE_URL=http://127.0.0.1:3001
+#   WAHA_API_KEY=<same value as waha/.env>
+#   WAHA_WEBHOOK_URL=http://host.docker.internal:3000/api/webhooks/waha
 
 pnpm dev
 ```
 
-> WAHA must be able to reach `APP_URL` to deliver webhooks. If you develop
-> against a WAHA running elsewhere, expose your local app with a tunnel and set
-> `WAHA_WEBHOOK_URL` accordingly.
+> **Webhooks travel inward**, from the WAHA container to your app. Inside that
+> container `localhost:3000` is WAHA itself, not your machine — which is why
+> `WAHA_WEBHOOK_URL` must be `host.docker.internal` when the app runs on the
+> host. Get this wrong and messages arrive on your phone but never in the app.
 
 ## Database
 
