@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -11,9 +11,13 @@ export const aiBots = sqliteTable('ai_bots', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   provider: text('provider').notNull(), // openai | gemini
-  apiKey: text('api_key').notNull(),
+  /** Optional. Falls back to OPENAI_API_KEY / GEMINI_API_KEY from the env. */
+  apiKey: text('api_key'),
   model: text('model').notNull(),
   prompt: text('prompt').notNull(),
+  /** direct = call the LLM straight; external_agent = hand off to Agent Runtime. */
+  handlerType: text('handler_type').notNull().default('direct'),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
   isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
@@ -22,33 +26,80 @@ export const aiBots = sqliteTable('ai_bots', {
 export const waSessions = sqliteTable('wa_sessions', {
   id: text('id').primaryKey(),
   sessionName: text('session_name').notNull(),
-  status: text('status').notNull().default('offline'), // offline | waiting_qr | connected
+  /** Transport that backs this session. Only 'waha' today. */
+  provider: text('provider').notNull().default('waha'),
+  status: text('status').notNull().default('offline'), // offline | starting | waiting_qr | connected | failed
   lastConnectedAt: text('last_connected_at'),
-})
-
-export const contacts = sqliteTable('contacts', {
-  id: text('id').primaryKey(),
-  phoneNumber: text('phone_number').notNull().unique(),
-  name: text('name'),
-  aiEnabled: integer('ai_enabled', { mode: 'boolean' }).notNull().default(false),
-  aiBotId: text('ai_bot_id'),
-  waSessionId: text('wa_session_id'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })
+
+export const contacts = sqliteTable(
+  'contacts',
+  {
+    id: text('id').primaryKey(),
+    phoneNumber: text('phone_number').notNull().unique(),
+    name: text('name'),
+    /** Default auto-reply mode applied to newly opened conversations. */
+    aiEnabled: integer('ai_enabled', { mode: 'boolean' }).notNull().default(false),
+    aiBotId: text('ai_bot_id'),
+    waSessionId: text('wa_session_id'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (t) => [index('idx_contacts_wa_session').on(t.waSessionId)]
+)
+
+export const conversations = sqliteTable(
+  'conversations',
+  {
+    id: text('id').primaryKey(),
+    contactId: text('contact_id').notNull(),
+    waSessionId: text('wa_session_id'),
+    botId: text('bot_id'),
+    /** auto = AI replies; human = operator handles it. */
+    mode: text('mode').notNull().default('human'),
+    status: text('status').notNull().default('open'), // open | resolved
+    lastMessageAt: text('last_message_at'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (t) => [
+    index('idx_conversations_contact').on(t.contactId),
+    index('idx_conversations_status').on(t.status, t.lastMessageAt),
+    index('idx_conversations_open').on(t.contactId, t.status),
+  ]
+)
+
+export const messages = sqliteTable(
+  'messages',
+  {
+    id: text('id').primaryKey(),
+    conversationId: text('conversation_id').notNull(),
+    /** Denormalised for cheap contact-scoped queries. */
+    contactId: text('contact_id').notNull(),
+    provider: text('provider').notNull().default('waha'),
+    /** Provider-side id. Used to deduplicate repeated webhook deliveries. */
+    providerMessageId: text('provider_message_id'),
+    direction: text('direction').notNull(), // incoming | outgoing
+    senderType: text('sender_type').notNull(), // customer | ai | human | system
+    messageType: text('message_type').notNull().default('text'), // text | image | audio | document | unknown
+    content: text('content').notNull().default(''),
+    status: text('status').notNull().default('received'), // received | processing | sent | failed
+    error: text('error'),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_messages_conversation').on(t.conversationId, t.createdAt),
+    index('idx_messages_contact').on(t.contactId, t.createdAt),
+    uniqueIndex('idx_messages_provider_message_id').on(t.provider, t.providerMessageId),
+  ]
+)
 
 export const systemSettings = sqliteTable('system_settings', {
   id: text('id').primaryKey(),
   autoReplyEnabled: integer('auto_reply_enabled', { mode: 'boolean' }).notNull().default(false),
   defaultBotId: text('default_bot_id'),
-})
-
-export const messages = sqliteTable('messages', {
-  id: text('id').primaryKey(),
-  contactId: text('contact_id').notNull(),
-  direction: text('direction').notNull(), // incoming | outgoing
-  message: text('message').notNull(),
-  createdAt: text('created_at').notNull(),
 })
 
 export const blastCampaigns = sqliteTable('blast_campaigns', {
@@ -65,14 +116,18 @@ export const blastCampaigns = sqliteTable('blast_campaigns', {
   updatedAt: text('updated_at').notNull(),
 })
 
-export const blastRecipients = sqliteTable('blast_recipients', {
-  id: text('id').primaryKey(),
-  campaignId: text('campaign_id').notNull(),
-  phone: text('phone').notNull(),
-  name: text('name'),
-  variables: text('variables'), // JSON string
-  status: text('status').notNull().default('pending'), // pending | sending | sent | failed | skipped
-  providerMessageId: text('provider_message_id'),
-  error: text('error'),
-  sentAt: text('sent_at'),
-})
+export const blastRecipients = sqliteTable(
+  'blast_recipients',
+  {
+    id: text('id').primaryKey(),
+    campaignId: text('campaign_id').notNull(),
+    phone: text('phone').notNull(),
+    name: text('name'),
+    variables: text('variables'), // JSON string
+    status: text('status').notNull().default('pending'), // pending | sending | sent | failed | skipped
+    providerMessageId: text('provider_message_id'),
+    error: text('error'),
+    sentAt: text('sent_at'),
+  },
+  (t) => [index('idx_blast_recipients_campaign_status').on(t.campaignId, t.status)]
+)

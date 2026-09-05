@@ -337,6 +337,7 @@ export default function ContactsPage() {
     setBots(await br.json())
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchData() }, [])
 
   // Derive unique sessions from contacts

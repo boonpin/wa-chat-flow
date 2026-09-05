@@ -1,15 +1,14 @@
 import jwt from 'jsonwebtoken'
 import { cookies } from 'next/headers'
-
-const JWT_SECRET = process.env.JWT_SECRET || 'wa-robot-secret-key-change-in-production'
+import { jwtSecret } from '@/lib/config'
 
 export function createToken(userId: string) {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' })
+  return jwt.sign({ userId }, jwtSecret, { expiresIn: '7d' })
 }
 
 export function verifyToken(token: string): { userId: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: string }
+    return jwt.verify(token, jwtSecret) as { userId: string }
   } catch {
     return null
   }

@@ -21,16 +21,22 @@ This tool is designed for businesses that want to **automate customer replies, s
 - Automatic reply to incoming WhatsApp messages
 
 ## 📱 WhatsApp Integration
-- Connect WhatsApp via **whatsapp-web.js**
-- QR code login
-- Session status monitoring
-- Automatic reconnection handling
+- Connect WhatsApp through **WAHA** (WhatsApp HTTP API), running as its own container
+- QR code login, multiple numbers side by side
+- Session status monitoring and automatic reconnection, handled by the gateway
+- Swappable transport: business logic talks to a `WhatsAppProvider` interface, never to WAHA directly
 
 ## 🧠 Multiple AI Bots
 - Create multiple AI bots
 - Set **default bot** for auto replies
 - Assign specific bots to specific contacts
 - Enable or disable bots anytime
+
+## 📥 Shared Inbox
+- Every thread in one place, filtered by Open / Resolved
+- Per-conversation **AI Auto Reply** toggle — hand a thread to a human at any time
+- Operators reply manually alongside the AI, with delivery status on every message
+- Conversation memory: the bot sees the last ~20 messages of the thread
 
 ## 👥 Contact Management
 - Store incoming WhatsApp contacts
@@ -53,90 +59,177 @@ This tool is designed for businesses that want to **automate customer replies, s
 - **Styling**: TailwindCSS 4
 - **Database**: Better-SQLite3
 - **ORM**: Drizzle ORM
-- **WhatsApp Integration**: whatsapp-web.js
+- **WhatsApp Integration**: WAHA (WhatsApp HTTP API)
 - **AI Providers**: OpenAI, Google Gemini
-
-WhatsApp Integration:
-- whatsapp-web.js
-
-AI Providers:
-- OpenAI
-- Google Gemini
+- **Deployment**: Docker Compose (app + WAHA on a single VPS)
 
 ---
 
 # System Architecture
 
 ```
+WhatsApp
+   ↓
+WAHA
+   ↓ webhook / REST API
+WA Chat Flow
+   ├── Next.js
+   ├── SQLite
+   ├── Contacts
+   ├── Conversations
+   ├── Inbox
+   ├── AI Handler
+   │    ├── Direct LLM       ← now
+   │    └── Agent Runtime    ← later
+   └── WhatsApp Provider
+        └── WAHA
+```
 
-User Message (WhatsApp)
-↓
-whatsapp-web.js Listener
-↓
-Backend Message Handler
-↓
-Check Contact Settings
-↓
-Select AI Bot
-↓
-Send Prompt + Message to AI Provider
-↓
-Receive AI Response
-↓
-Reply Message to WhatsApp User
+Message flow:
 
-````
+```
+WAHA webhook
+↓
+verify HMAC → normalize → handleIncomingMessage()
+↓
+deduplicate on provider_message_id
+↓
+find/create contact → find/create conversation → store message
+↓
+AUTO or HUMAN?
+↓ (auto)
+select bot → build context (last ~20 messages) → AI Handler
+↓
+WhatsAppProvider.sendText() → WAHA → WhatsApp
+```
+
+Responsibility split:
+
+| Layer | Owns |
+| ----- | ---- |
+| **WAHA** | WhatsApp connectivity, QR/login, sessions, send/receive, reconnection |
+| **WA Chat Flow** | Dashboard, contacts, conversations, messages, human inbox, AI routing, prompts |
+| **Direct AI** | OpenAI / Gemini calls |
+| **Agent Runtime** *(later)* | RAG, knowledge base, MCP, tools, advanced memory |
 
 ---
 
 # Installation
 
-## 1. Clone Repository
+## Production — Docker Compose (recommended)
 
 ```bash
 git clone git@github.com:boonpin/wa-chat-flow.git
-cd wa-ai-handler
-````
+cd wa-chat-flow
 
-## 2. Install Dependencies
+cp .env.example .env
+# Fill in, at minimum:
+#   JWT_SECRET              openssl rand -hex 32
+#   WAHA_API_KEY            openssl rand -hex 32
+#   WAHA_WEBHOOK_HMAC_KEY   openssl rand -hex 32
+#   WAHA_DASHBOARD_PASSWORD
+#   ADMIN_EMAIL / ADMIN_PASSWORD
+#   APP_URL                 https://wa.example.com
+
+docker compose up -d --build
+```
+
+This runs two containers:
+
+```
+Small VPS
+
+Docker Compose
+│
+├── wa-chat-flow          published on :3000
+│   ├── Next.js
+│   └── /storage/app/app.db
+│
+└── waha                  internal network only
+    └── /storage/waha/*
+```
+
+WAHA is intentionally **not** published to the host — its API can send messages
+from your number, so WA Chat Flow is the only public-facing service. Put a
+reverse proxy (Caddy, nginx, Traefik) with TLS in front of port 3000.
+
+## Local development
 
 ```bash
-npm install
+pnpm install
+cp .env.example .env    # set JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
+
+# Run WAHA on its own:
+docker run -d --name waha -p 3001:3000 \
+  -e WHATSAPP_API_KEY=dev-key \
+  -v $(pwd)/storage/waha/sessions:/app/.sessions \
+  devlikeapro/waha:latest
+
+# Point the app at it (.env):
+#   WAHA_BASE_URL=http://localhost:3001
+#   WAHA_API_KEY=dev-key
+
+pnpm dev
 ```
 
-## 3. Configure Environment
+> WAHA must be able to reach `APP_URL` to deliver webhooks. If you develop
+> against a WAHA running elsewhere, expose your local app with a tunnel and set
+> `WAHA_WEBHOOK_URL` accordingly.
 
-Create `.env` file:
+## Database
 
-```env
-PORT=3000
-DATABASE_URL=sqlite.db
+Migrations run automatically at startup. To apply them without booting the app:
 
-OPENAI_API_KEY=
-GEMINI_API_KEY=
-```
-
-## 4. Databases setup
-Ensure you have the database initialized:
 ```bash
-npm run seed
+pnpm db:migrate     # apply pending migrations
+pnpm db:generate    # generate a new migration after editing lib/db/schema.ts
 ```
 
-## 5. Start Application
+Upgrading from a pre-WAHA install: the first start detects the old schema,
+converts it in place (messages are grouped into conversations, contacts keep
+their AI settings) and stamps the migration history. **Back up
+`storage/data/app.db` first.**
+
+## Admin account
+
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` create the first user on initial startup only.
+To create or reset an account later:
+
 ```bash
-npm run dev
+ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='a-strong-password' pnpm seed
 ```
+
+There are no default credentials — an unseeded install has no way in until you
+set these.
 
 ---
 
 # WhatsApp Setup
 
-1. Open the **WhatsApp configuration page**
-2. Click **Connect WhatsApp**
-3. Scan the **QR Code**
-4. Once authenticated, the session will remain active
+1. Open **WhatsApp** in the sidebar
+2. **+ Add Number**, give it a name (e.g. Sales, Support)
+3. Click **Connect** and scan the **QR Code** with WhatsApp → Linked Devices
+4. The session lives in WAHA, so it survives app restarts and redeploys
 
-If the session expires, the system will request login again.
+If a session expires, click **Reconnect** and scan again.
+
+---
+
+# Backups
+
+Back up the two things that cannot be rebuilt — the database and the WhatsApp
+logins:
+
+```bash
+pnpm backup       # writes storage/backups/, keeps 7 days
+```
+
+The database is copied with SQLite's online backup API, so it is safe to run
+against a live system. Schedule it from cron:
+
+```
+0 3 * * *  cd /srv/wa-chat-flow && pnpm backup >> storage/backups/backup.log 2>&1
+```
 
 ---
 
@@ -144,13 +237,18 @@ If the session expires, the system will request login again.
 
 Each AI Bot includes:
 
-| Field    | Description                    |
-| -------- | ------------------------------ |
-| Name     | Bot name                       |
-| Provider | OpenAI / Gemini                |
-| API Key  | Provider API key               |
-| Prompt   | System prompt used for replies |
-| Enabled  | Enable or disable the bot      |
+| Field        | Description                                                        |
+| ------------ | ------------------------------------------------------------------ |
+| Name         | Bot name                                                            |
+| Provider     | OpenAI / Gemini                                                     |
+| API Key      | Optional — falls back to `OPENAI_API_KEY` / `GEMINI_API_KEY`        |
+| Model        | Provider model id                                                   |
+| Prompt       | System prompt; this is your business context                        |
+| Handler type | `direct` today; `external_agent` when the Agent Runtime lands       |
+| Enabled      | Disabled bots are never selected for auto replies                   |
+
+Stored API keys are never sent back to the browser. Editing a bot leaves the key
+field blank — submit it empty to keep the existing key.
 
 Example prompt:
 
@@ -179,18 +277,15 @@ Example:
 
 ---
 
-# Global Auto Reply Control
+# Auto Reply Control
 
-The system includes a **global switch**:
+Two levels, both must be on for the AI to answer:
 
-```
-System Settings → Auto Reply
-```
-
-Options:
-
-* ON → AI responds automatically
-* OFF → Messages received but no auto reply
+1. **Global switch** — `Settings → Auto Reply`. Off means messages are still
+   received and stored, but nothing is sent.
+2. **Per conversation** — the `AI Auto Reply` toggle in the Inbox. On is `auto`
+   mode; off is `human` mode, where an operator handles the thread. The toggle
+   also becomes that contact's default for future conversations.
 
 ---
 
@@ -204,14 +299,21 @@ wa-ai-handler
 │   ├── api              # Backend API routes
 │   └── login            # Authentication pages
 │
-├── lib                  # Shared utilities (DB, WA Client, Auth)
-│   ├── db               # Drizzle schema and connection
-│   ├── wa               # WhatsApp client logic
-│   └── ai               # AI provider integrations
+├── lib
+│   ├── wa               # Transport: provider interface, WAHA client, normalizer
+│   ├── messaging        # Incoming handler, outgoing sender, bot selection
+│   ├── conversation     # Conversation/thread service
+│   ├── contacts         # Contact upsert
+│   ├── ai               # AIHandler abstraction, direct handler, providers
+│   ├── blast            # Campaign engine and queue
+│   ├── db               # Drizzle schema, migrations runner, legacy upgrade
+│   └── config.ts        # All environment configuration, in one place
 │
+├── drizzle              # Generated SQL migrations (shipped in the image)
 ├── components           # Reusable UI components
 ├── public               # Static assets
-├── scripts              # Maintenance and seed scripts
+├── scripts              # migrate / seed / backup
+├── docker-compose.yml   # app + waha
 └── README.md
 ```
 
@@ -219,7 +321,7 @@ wa-ai-handler
 
 # Future Improvements
 
-* Conversation memory
+* Agent Runtime handler (`handler_type = external_agent`)
 * Knowledge base integration
 * RAG (Retrieval Augmented Generation)
 * Chat analytics dashboard

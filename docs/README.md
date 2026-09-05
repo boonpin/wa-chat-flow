@@ -8,12 +8,13 @@ This user guide is split by module for easier reading.
 2. [Login and Access](./02-login-and-access.md)
 3. [Dashboard Overview](./03-dashboard-overview.md)
 4. [WhatsApp Connection](./04-whatsapp-connection.md)
-5. [Bots Management](./05-bots-management.md)
-6. [Contacts Management](./06-contacts-management.md)
-7. [Automation Settings](./07-automation-settings.md)
-8. [End-to-End Workflow](./08-end-to-end-workflow.md)
-9. [System Design](./SYSTEM_DESIGN.md)
-10. [Troubleshooting](./09-troubleshooting.md)
+5. [Inbox](./10-inbox.md)
+6. [Bots Management](./05-bots-management.md)
+7. [Contacts Management](./06-contacts-management.md)
+8. [Automation Settings](./07-automation-settings.md)
+9. [End-to-End Workflow](./08-end-to-end-workflow.md)
+10. [System Design](./SYSTEM_DESIGN.md)
+11. [Troubleshooting](./09-troubleshooting.md)
 
 ## Screenshots
 

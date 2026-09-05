@@ -1,0 +1,14 @@
+# better-sqlite3 (and the build tooling) need their install scripts to run so the
+# native bindings are compiled or downloaded. `allowBuilds` is the pnpm 11 key;
+# `onlyBuiltDependencies` keeps pnpm 10 working too.
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+
+onlyBuiltDependencies:
+  - better-sqlite3
+  - esbuild
+  - sharp
+  - unrs-resolver

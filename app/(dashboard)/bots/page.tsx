@@ -7,13 +7,24 @@ interface Bot {
   id: string
   name: string
   provider: string
-  apiKey: string
+  /** The stored key is never sent to the browser — only whether one exists. */
+  hasApiKey: boolean
   model: string
   prompt: string
+  handlerType: string
+  enabled: boolean
   isDefault: boolean
 }
 
-const EMPTY_BOT = { name: '', provider: 'openai', apiKey: '', model: 'gpt-4o-mini', prompt: '', isDefault: false }
+const EMPTY_BOT = {
+  name: '',
+  provider: 'openai',
+  apiKey: '',
+  model: 'gpt-4o-mini',
+  prompt: '',
+  enabled: true,
+  isDefault: false,
+}
 
 const PROMPT_TEMPLATES = [
   {
@@ -62,7 +73,16 @@ export default function BotsPage() {
   }
 
   function openEdit(bot: Bot) {
-    setForm({ name: bot.name, provider: bot.provider, apiKey: bot.apiKey, model: bot.model, prompt: bot.prompt, isDefault: bot.isDefault })
+    // API key stays blank: submitting an empty value keeps the stored one.
+    setForm({
+      name: bot.name,
+      provider: bot.provider,
+      apiKey: '',
+      model: bot.model,
+      prompt: bot.prompt,
+      enabled: bot.enabled,
+      isDefault: bot.isDefault,
+    })
     setSelectedBot(bot)
     setIsNew(false)
     setDirty(false)
@@ -163,7 +183,10 @@ export default function BotsPage() {
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-[#0F172A]">{bot.name}</span>
-                        {bot.isDefault && <Badge variant="green" size="sm">Default</Badge>}
+                        <span className="flex items-center gap-1.5">
+                          {!bot.enabled && <Badge variant="gray" size="sm">Off</Badge>}
+                          {bot.isDefault && <Badge variant="green" size="sm">Default</Badge>}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant="gray">
@@ -226,8 +249,16 @@ export default function BotsPage() {
                     type="password"
                     value={form.apiKey}
                     onChange={e => updateForm('apiKey', e.target.value)}
-                    placeholder="sk-..."
-                    required
+                    placeholder={
+                      !isNew && selectedBot?.hasApiKey
+                        ? 'Stored — leave blank to keep'
+                        : 'Leave blank to use the server key'
+                    }
+                    hint={
+                      isNew || !selectedBot?.hasApiKey
+                        ? 'Optional. Falls back to OPENAI_API_KEY / GEMINI_API_KEY.'
+                        : undefined
+                    }
                   />
                   <Select
                     label="Model"
@@ -267,6 +298,15 @@ export default function BotsPage() {
                     required
                   />
                   <p className="text-xs text-[#94A3B8] mt-1">This is the AI&apos;s personality and instructions</p>
+                </div>
+
+                {/* Enabled toggle */}
+                <div className="flex items-center justify-between py-3 px-4 bg-[#F8FAFC] rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium text-[#0F172A]">Bot enabled</p>
+                    <p className="text-xs text-[#475569]">Disabled bots are never selected for auto replies</p>
+                  </div>
+                  <Toggle checked={form.enabled} onChange={v => updateForm('enabled', v)} />
                 </div>
 
                 {/* Default toggle */}

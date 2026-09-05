@@ -1,8 +1,10 @@
 import { db } from '@/lib/db'
 import { blastCampaigns, blastRecipients } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { getClient } from '@/lib/wa/client'
-import { renderTemplate, normalizePhone } from './renderer'
+import { getProvider } from '@/lib/wa/provider'
+import { getLiveStatus } from '@/lib/wa/sessions'
+import { normalizePhone } from '@/lib/wa/phone'
+import { renderTemplate } from './renderer'
 
 declare global {
   var __blastTimers: Map<string, ReturnType<typeof setTimeout>>
@@ -14,26 +16,23 @@ globalThis.__blastConsecFails ??= new Map()
 
 const CONSEC_FAIL_LIMIT = 5
 
-/** Translate raw JS / wwebjs errors into a user-readable message. */
-function toFriendlyError(err: unknown): { friendly: string; raw: string } {
-  const raw = err instanceof Error
-    ? (err.stack ?? err.message)
-    : String(err)
-  const msg = err instanceof Error ? err.message : String(err)
+/** Translate raw transport errors into a message an operator can act on. */
+function toFriendlyError(message: string): string {
+  const lower = message.toLowerCase()
 
-  if (msg.includes('getChat') || msg.includes('Cannot read properties of undefined') || msg.includes('Cannot read properties of null')) {
-    return { raw, friendly: 'WhatsApp session error: browser page is no longer available. Please reconnect the session.' }
+  if (lower.includes('cannot reach waha') || lower.includes('econnrefused')) {
+    return 'WhatsApp gateway is unreachable. Check that the WAHA service is running.'
   }
-  if (msg.includes('not open') || msg.includes('Target closed') || msg.includes('Session closed')) {
-    return { raw, friendly: 'WhatsApp session closed unexpectedly. Please reconnect the session.' }
+  if (lower.includes('session') && (lower.includes('not found') || lower.includes('stopped'))) {
+    return 'WhatsApp session is not running. Please reconnect the session.'
   }
-  if (msg.includes('ETIMEOUT') || msg.includes('ETIMEDOUT') || msg.toLowerCase().includes('timeout')) {
-    return { raw, friendly: 'Request timed out. Check your internet connection.' }
+  if (lower.includes('401') || lower.includes('unauthorized') || lower.includes('403')) {
+    return 'WhatsApp gateway rejected the request. Check WAHA_API_KEY.'
   }
-  if (msg.toLowerCase().includes('not authorized') || msg.toLowerCase().includes('unauthorized')) {
-    return { raw, friendly: 'Session not authorized. Please reconnect WhatsApp.' }
+  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('etimedout')) {
+    return 'Request timed out. Check your internet connection.'
   }
-  return { raw, friendly: `Send failed: ${msg}` }
+  return `Send failed: ${message}`
 }
 
 export function isProcessorRunning(campaignId: string): boolean {
@@ -50,6 +49,16 @@ export function startProcessor(campaignId: string): void {
 export function stopProcessor(campaignId: string): void {
   const timer = globalThis.__blastTimers.get(campaignId)
   if (timer) clearTimeout(timer)
+  globalThis.__blastTimers.delete(campaignId)
+  globalThis.__blastConsecFails.delete(campaignId)
+}
+
+function pauseCampaign(campaignId: string, reason: string, campaignName: string): void {
+  console.error(`[BLAST] [${campaignName}] ${reason} — pausing campaign`)
+  db.update(blastCampaigns)
+    .set({ status: 'paused', updatedAt: new Date().toISOString() })
+    .where(eq(blastCampaigns.id, campaignId))
+    .run()
   globalThis.__blastTimers.delete(campaignId)
   globalThis.__blastConsecFails.delete(campaignId)
 }
@@ -81,6 +90,23 @@ async function processTick(campaignId: string): Promise<void> {
       return
     }
 
+    // A disconnected session fails every send, so check once per tick rather
+    // than burning through the recipient list.
+    const sessionStatus = await getLiveStatus(campaign.waSessionId)
+    if (sessionStatus !== 'connected') {
+      const message = 'WhatsApp session not connected. Please reconnect the session first.'
+      db.update(blastRecipients)
+        .set({ status: 'failed', error: message })
+        .where(eq(blastRecipients.id, recipient.id))
+        .run()
+      db.update(blastCampaigns)
+        .set({ failedCount: campaign.failedCount + 1, updatedAt: new Date().toISOString() })
+        .where(eq(blastCampaigns.id, campaignId))
+        .run()
+      pauseCampaign(campaignId, `Session "${campaign.waSessionId}" is ${sessionStatus}`, campaign.name)
+      return
+    }
+
     // Mark recipient as sending
     db.update(blastRecipients)
       .set({ status: 'sending' })
@@ -95,73 +121,49 @@ async function processTick(campaignId: string): Promise<void> {
     }
     const message = renderTemplate(campaign.messageTemplate, vars)
 
-    // Send via WA client
-    const client = getClient(campaign.waSessionId)
+    const result = await getProvider().sendText({
+      sessionId: campaign.waSessionId,
+      phone: normalizePhone(recipient.phone),
+      text: message,
+    })
 
-    if (!client) {
-      const friendlyMsg = 'WhatsApp session not connected. Please reconnect the session first.'
+    if (result.ok) {
       db.update(blastRecipients)
-        .set({ status: 'failed', error: friendlyMsg })
+        .set({
+          status: 'sent',
+          providerMessageId: result.providerMessageId ?? null,
+          error: null,
+          sentAt: new Date().toISOString(),
+        })
+        .where(eq(blastRecipients.id, recipient.id))
+        .run()
+      db.update(blastCampaigns)
+        .set({ sentCount: campaign.sentCount + 1, updatedAt: new Date().toISOString() })
+        .where(eq(blastCampaigns.id, campaignId))
+        .run()
+
+      globalThis.__blastConsecFails.delete(campaignId)
+      console.log(`[BLAST] [${campaign.name}] ✓ Sent → ${recipient.phone}`)
+    } else {
+      const friendly = toFriendlyError(result.error ?? 'Unknown error')
+      db.update(blastRecipients)
+        .set({ status: 'failed', error: friendly })
         .where(eq(blastRecipients.id, recipient.id))
         .run()
       db.update(blastCampaigns)
         .set({ failedCount: campaign.failedCount + 1, updatedAt: new Date().toISOString() })
         .where(eq(blastCampaigns.id, campaignId))
         .run()
-      console.error(`[BLAST] [${campaign.name}] No WA client for session "${campaign.waSessionId}" — pausing campaign`)
-      // Immediately pause: no point retrying without a session
-      db.update(blastCampaigns)
-        .set({ status: 'paused', updatedAt: new Date().toISOString() })
-        .where(eq(blastCampaigns.id, campaignId))
-        .run()
-      globalThis.__blastTimers.delete(campaignId)
-      globalThis.__blastConsecFails.delete(campaignId)
-      return
-    } else {
-      try {
-        const phone = normalizePhone(recipient.phone)
-        const result = await client.sendMessage(`${phone}@c.us`, message)
 
-        db.update(blastRecipients)
-          .set({ status: 'sent', providerMessageId: result.id._serialized, sentAt: new Date().toISOString() })
-          .where(eq(blastRecipients.id, recipient.id))
-          .run()
-        db.update(blastCampaigns)
-          .set({ sentCount: campaign.sentCount + 1, updatedAt: new Date().toISOString() })
-          .where(eq(blastCampaigns.id, campaignId))
-          .run()
+      console.error(`[BLAST] [${campaign.name}] ✗ Failed → ${recipient.phone}: ${friendly}`)
+      console.error(`[BLAST] Raw error: ${result.error}`)
 
-        // Reset consecutive failure count on success
-        globalThis.__blastConsecFails.delete(campaignId)
-        console.log(`[BLAST] [${campaign.name}] ✓ Sent → ${recipient.phone}`)
-      } catch (err) {
-        const { friendly, raw } = toFriendlyError(err)
-        db.update(blastRecipients)
-          .set({ status: 'failed', error: friendly })
-          .where(eq(blastRecipients.id, recipient.id))
-          .run()
-        db.update(blastCampaigns)
-          .set({ failedCount: campaign.failedCount + 1, updatedAt: new Date().toISOString() })
-          .where(eq(blastCampaigns.id, campaignId))
-          .run()
+      const consecFails = (globalThis.__blastConsecFails.get(campaignId) ?? 0) + 1
+      globalThis.__blastConsecFails.set(campaignId, consecFails)
 
-        console.error(`[BLAST] [${campaign.name}] ✗ Failed → ${recipient.phone}: ${friendly}`)
-        console.error(`[BLAST] Raw error:`, raw)
-
-        // Track consecutive failures — auto-pause if threshold exceeded
-        const consecFails = (globalThis.__blastConsecFails.get(campaignId) ?? 0) + 1
-        globalThis.__blastConsecFails.set(campaignId, consecFails)
-
-        if (consecFails >= CONSEC_FAIL_LIMIT) {
-          console.error(`[BLAST] [${campaign.name}] ${consecFails} consecutive failures — auto-pausing campaign`)
-          db.update(blastCampaigns)
-            .set({ status: 'paused', updatedAt: new Date().toISOString() })
-            .where(eq(blastCampaigns.id, campaignId))
-            .run()
-          globalThis.__blastTimers.delete(campaignId)
-          globalThis.__blastConsecFails.delete(campaignId)
-          return
-        }
+      if (consecFails >= CONSEC_FAIL_LIMIT) {
+        pauseCampaign(campaignId, `${consecFails} consecutive failures`, campaign.name)
+        return
       }
     }
 

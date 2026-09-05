@@ -4,12 +4,21 @@ The `Settings` page controls system-wide reply behavior.
 
 ## Auto Reply (Global Switch)
 
-- When ON: system can send AI replies.
-- When OFF: no AI replies are sent, even if contact AI is ON.
+- When ON: the system can send AI replies.
+- When OFF: no AI replies are sent, whatever any conversation or contact says.
+
+Incoming messages are stored either way — turning this off stops replies, not
+receiving. New contacts inherit this switch as their starting AI setting.
 
 ## Default Bot
 
-The default bot is used when a contact does not have a specific bot assigned.
+Bot selection walks from most specific to least:
+
+```
+conversation bot  →  contact bot  →  default bot (here)  →  bot flagged Default
+```
+
+Disabled bots are skipped at every step.
 
 Recommended: always set a default bot.
 
@@ -18,6 +27,11 @@ Recommended: always set a default bot.
 - Changes show an unsaved banner.
 - Click **Save Settings** to apply.
 - Click **Discard** to revert.
+
+## Related
+
+- Per-conversation control lives in the [Inbox](./10-inbox.md).
+- Per-contact defaults live in [Contacts](./06-contacts-management.md).
 
 ## Screenshot
 

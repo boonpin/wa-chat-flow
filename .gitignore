@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files (never commit secrets)
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -40,8 +42,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# runtime storage
-/storage/data/
-/storage/temp/
-/.wwebjs_cache/
+# runtime storage (databases, WAHA sessions, backups)
+/storage/
 /data/
+/.wwebjs_cache/
+*.db
+*.db-shm
+*.db-wal

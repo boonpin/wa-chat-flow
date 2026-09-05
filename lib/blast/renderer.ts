@@ -7,11 +7,3 @@ export function renderTemplate(template: string, variables: Record<string, strin
     return variables[key] ?? `{{${key}}}`
   })
 }
-
-/**
- * Normalizes a phone number to the format required by whatsapp-web.js.
- * Strips non-digit characters, returns bare number (caller appends @c.us).
- */
-export function normalizePhone(phone: string): string {
-  return phone.replace(/\D/g, '')
-}

@@ -3,7 +3,7 @@ import { getSession } from '@/lib/auth/session'
 import { db } from '@/lib/db'
 import { waSessions } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { logoutWhatsapp, getWAStatus } from '@/lib/wa/client'
+import { deleteSession } from '@/lib/wa/sessions'
 
 export async function PATCH(
   request: NextRequest,
@@ -20,7 +20,11 @@ export async function PATCH(
   const existing = db.select().from(waSessions).where(eq(waSessions.id, id)).get()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  db.update(waSessions).set({ sessionName: name }).where(eq(waSessions.id, id)).run()
+  db.update(waSessions)
+    .set({ sessionName: name, updatedAt: new Date().toISOString() })
+    .where(eq(waSessions.id, id))
+    .run()
+
   return NextResponse.json({ ok: true })
 }
 
@@ -36,12 +40,6 @@ export async function DELETE(
   const existing = db.select().from(waSessions).where(eq(waSessions.id, id)).get()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Logout if connected/active before deleting
-  const status = getWAStatus(id)
-  if (status !== 'offline') {
-    await logoutWhatsapp(id)
-  }
-
-  db.delete(waSessions).where(eq(waSessions.id, id)).run()
+  await deleteSession(id)
   return NextResponse.json({ ok: true })
 }

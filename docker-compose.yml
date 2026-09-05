@@ -1,0 +1,49 @@
+# WA Chat Flow — single-VPS deployment.
+#
+#   Internet ──► wa-chat-flow (:3000) ──► waha (internal network only)
+#
+# WAHA is deliberately not published to the host: WA Chat Flow is the only
+# public-facing service, and it reaches the gateway over the compose network.
+
+services:
+  app:
+    build: .
+    image: wa-chat-flow
+    restart: unless-stopped
+    depends_on:
+      waha:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATA_DIR: /storage/app
+      WAHA_BASE_URL: http://waha:3000
+      # WAHA calls back over the internal network, not via the public APP_URL.
+      WAHA_WEBHOOK_URL: http://app:3000/api/webhooks/waha
+    volumes:
+      - ./storage/app:/storage/app
+    ports:
+      - "3000:3000"
+
+  waha:
+    image: devlikeapro/waha:latest
+    restart: unless-stopped
+    environment:
+      WHATSAPP_API_KEY: ${WAHA_API_KEY:?set WAHA_API_KEY in .env}
+      # Bring saved sessions back up after a restart without manual rescans.
+      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+      WAHA_PRINT_QR: "False"
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:-admin}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?set WAHA_DASHBOARD_PASSWORD in .env}
+    volumes:
+      - ./storage/waha/sessions:/app/.sessions
+      - ./storage/waha/media:/app/.media
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # Uncomment ONLY for local debugging of the WAHA dashboard. Never in
+    # production — the gateway API can send messages from your number.
+    # ports:
+    #   - "127.0.0.1:3001:3000"

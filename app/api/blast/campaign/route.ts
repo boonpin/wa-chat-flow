@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { blastCampaigns, blastRecipients, waSessions } from '@/lib/db/schema'
 import { eq, desc } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
-import { normalizePhone } from '@/lib/blast/renderer'
+import { normalizePhone } from '@/lib/wa/phone'
 
 export async function GET() {
   const session = await getSession()

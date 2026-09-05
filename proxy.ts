@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth/session'
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login']
+// Webhooks are authenticated by HMAC signature, not by the session cookie.
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/webhooks/']
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl

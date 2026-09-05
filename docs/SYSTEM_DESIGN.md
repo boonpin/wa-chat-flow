@@ -8,26 +8,44 @@ The **WhatsApp AI Automation Handler** is a full-stack automation platform that 
 ---
 
 ## 2. System Architecture
-The system is built as a consolidated full-stack application leveraging Next.js, allowing for tight integration between the background messaging workers and the frontend management interface.
+WhatsApp connectivity is delegated to **WAHA** (WhatsApp HTTP API), running as a
+separate container. WA Chat Flow is a pure business-logic application that talks
+to WAHA over REST and receives events by webhook. It no longer embeds a browser
+automation stack, which is what made the previous design fragile to restart.
 
 ### 2.1 High-Level Overview
 ```mermaid
 graph TD
-    WA[WhatsApp User] <--> |Messages| WJS[whatsapp-web.js]
-    WJS <--> |Event Listeners| NJS[Next.js Server Runtime]
-    Admin[Admin User] <--> |React UI| FE[Next.js App Router]
-    FE <--> |Server Actions/API| NJS
-    NJS <--> |Drizzle ORM| DB[(Better-SQLite3 Database)]
-    NJS <--> |API Requests| OpenAI[OpenAI API]
-    NJS <--> |API Requests| Gemini[Google Gemini API]
+    WA[WhatsApp User] <--> |Messages| WAHA[WAHA Gateway]
+    WAHA -->|Webhook events| WH["/api/webhooks/waha"]
+    WH --> HANDLER[Incoming Message Handler]
+    HANDLER <--> |Drizzle ORM| DB[(SQLite)]
+    HANDLER --> AIH[AI Handler]
+    AIH --> OpenAI[OpenAI API]
+    AIH --> Gemini[Google Gemini API]
+    AIH --> PROV[WhatsAppProvider]
+    PROV -->|REST| WAHA
+    Admin[Operator] <--> |React UI| FE[Next.js App Router]
+    FE <--> |API Routes| DB
+    FE --> PROV
 ```
 
 ### 2.2 Component Breakdown
-- **Full-Stack Core (Next.js 16):** A unified application handling both the React-based frontend (App Router) and the backend logic (Server Actions, API Routes, and Background Workers).
-- **Messaging Background Worker (`instrumentation.ts`):** Utilizes the Next.js instrumentation hook to launch and maintain long-running WhatsApp instances via `whatsapp-web.js` within the Node.js runtime.
-- **AI Orchestration Layer:** Handles complex prompt construction, provider-specific API calls, and response parsing for OpenAI and Google Gemini.
-- **Persistent Data Layer:** Uses **Better-SQLite3** with **Drizzle ORM** for high-performance, local data storage of bot configurations and session metadata.
-- **Middleware Security:** Implements custom session-based authentication for the dashboard and API protection.
+- **Full-Stack Core (Next.js 16):** Unified React frontend (App Router) plus backend API routes.
+- **WhatsApp Provider (`lib/wa/`):** A `WhatsAppProvider` interface with a single implementation, `WahaProvider`. It is the only module aware of WAHA's REST surface; business logic never imports it directly.
+- **Webhook Receiver (`app/api/webhooks/waha/`):** Verifies an HMAC signature, normalises the payload and hands off. It contains no AI logic and acknowledges before the reply is generated.
+- **Message Handler (`lib/messaging/incoming-handler.ts`):** The single entry point for inbound messages from any transport — deduplicate, resolve contact and conversation, store, then decide whether the AI answers.
+- **Conversation Layer (`lib/conversation/`):** Threads that group messages, carry AUTO/HUMAN mode and OPEN/RESOLVED status, and back the Inbox.
+- **AI Handler (`lib/ai/`):** An `AIHandler` interface. `DirectAIHandler` calls OpenAI or Gemini with the bot prompt plus recent history; an `AgentRuntimeHandler` will slot in behind the same interface.
+- **Persistent Data Layer:** **Better-SQLite3** in WAL mode with **Drizzle ORM** and versioned SQL migrations.
+- **Middleware Security:** Cookie-session auth for the dashboard and API; the webhook route is exempt and authenticated by HMAC instead.
+
+### 2.3 Deduplication
+Webhook delivery is at-least-once — WAHA retries on non-2xx and a restart can
+replay events. Every inbound message carries a provider message id, which is
+stored under a unique index on `(provider, provider_message_id)`. The handler
+checks it before inserting and treats a unique-constraint violation as a
+duplicate, which also covers two concurrent deliveries of the same event.
 
 ---
 
@@ -41,17 +59,32 @@ graph TD
 ![Bot Configuration](./screenshots/04-bots.png)
 
 ### 3.2 Intelligent Message Routing
-A hierarchical logic engine processes each incoming message:
-1. **System Filter:** Checks global auto-reply master switch.
-2. **Contact Filter:** Identifies the sender and checks their specific AI-enabled preference.
-3. **Bot Selection:** Dispatches to a contact-specific assigned bot or falls back to the system-level default bot.
+Each incoming message runs through:
+1. **Deduplication:** Ignore an event already stored under the same provider message id.
+2. **System Filter:** Global auto-reply master switch.
+3. **Conversation Mode:** `auto` lets the AI answer; `human` leaves the thread to an operator.
+4. **Bot Selection:** Conversation bot → contact bot → system default → the bot flagged default. Disabled bots are skipped.
+5. **Context:** The bot prompt plus the last ~20 text messages of that conversation.
+
+### 3.4 Human Inbox
+Conversations are the operational unit. The Inbox lists them by Open / Resolved
+with search, and each thread exposes the `AI Auto Reply` toggle, bot selection,
+a Resolve action and a manual reply box. Manual replies are stored with
+`sender_type = human`, AI replies with `sender_type = ai`, so the transcript
+shows exactly who said what.
+
+### 3.5 Delivery Status
+Outbound messages are written before the send with status `processing`, then
+moved to `sent` (with the provider message id) or `failed` (with the error).
+A failure therefore stays visible in the thread instead of disappearing, and no
+queue system is required.
 
 ![Contact Assignment](./screenshots/05-contacts.png)
 
 ### 3.3 WhatsApp Session Lifecycle
-- **QR Code Authentication:** Generates and displays dynamic QR codes for secure multi-device linking.
-- **State Persistence:** Automatically restores authenticated sessions upon application restart using stored local session data.
-- **Live Monitoring:** Real-time feedback on connection status across the dashboard.
+- **QR Code Authentication:** WAHA renders the pairing code; the dashboard fetches and displays it.
+- **State Persistence:** Sessions live in WAHA's own storage, so they survive app restarts and redeploys.
+- **Live Monitoring:** Status is read from the gateway on demand and pushed by `session.status` webhooks.
 
 ![WhatsApp Integration](./screenshots/03-whatsapp.png)
 
@@ -65,7 +98,8 @@ A hierarchical logic engine processes each incoming message:
 | **Styling** | TailwindCSS 4 |
 | **Database** | Better-SQLite3 |
 | **ORM** | Drizzle ORM |
-| **WA Integration**| whatsapp-web.js |
+| **WA Integration**| WAHA (WhatsApp HTTP API) |
+| **Deployment** | Docker Compose (app + WAHA) |
 | **AI Providers** | OpenAI API, Google Generative AI |
 
 ---
@@ -76,35 +110,65 @@ The following diagram illustrates how the system handles a "headless" message ev
 ```mermaid
 sequenceDiagram
     participant User as WhatsApp User
-    participant WA as whatsapp-web.js (Worker)
-    participant NJS as Next.js Runtime
+    participant WAHA as WAHA Gateway
+    participant WH as Webhook Route
+    participant H as Message Handler
     participant DB as SQLite (Drizzle)
-    participant AI as AI Provider (OpenAI/Gemini)
+    participant AI as AI Provider
 
-    User->>WA: Send Message "Hello"
-    WA->>NJS: Trigger event handler (in instrumentation)
-    NJS->>DB: Query Global Settings
-    DB-->>NJS: Auto-Reply: ON
-    NJS->>DB: Fetch Contact Info
-    DB-->>NJS: Contact-Bot: "SupportBot"
-    NJS->>DB: Retrieve Bot Config & Credentials
-    DB-->>NJS: System Prompt & API Key
-    NJS->>AI: POST /generateContent
-    AI-->>NJS: Return AI Text
-    NJS->>WA: client.sendMessage(text)
-    WA->>User: Delivered to WhatsApp
+    User->>WAHA: Send Message "Hello"
+    WAHA->>WH: POST /api/webhooks/waha (HMAC signed)
+    WH->>WH: Verify signature, normalise payload
+    WH->>H: persistIncomingMessage()
+    H->>DB: Seen this provider_message_id?
+    DB-->>H: No
+    H->>DB: Upsert contact, open conversation, store message
+    WH-->>WAHA: 200 OK (ack before the AI runs)
+    H->>DB: Auto-reply on? Conversation in AUTO mode? Which bot?
+    DB-->>H: Yes / auto / "SupportBot"
+    H->>DB: Load last ~20 messages
+    H->>AI: Prompt + history + message
+    AI-->>H: Reply text
+    H->>DB: Insert outgoing message (processing)
+    H->>WAHA: POST /api/sendText
+    WAHA->>User: Delivered to WhatsApp
+    H->>DB: Mark sent (or failed, with the error)
 ```
 
 ---
 
 ## 6. Key Implementation Highlights
-- **Instrumentation Lifecycle:** Specifically using `instrumentation.ts` to ensure background WhatsApp clients start with the server, even in a serverless-focused framework like Next.js.
-- **Type-Safe Database Access:** Using Drizzle ORM to ensure consistency between the relational schema and the application logic.
-- **Client-Side Sockets/Polling:** Providing real-time updates for WhatsApp connection status on the dashboard.
+- **Replaceable Transport:** `WhatsAppProvider` and `AIHandler` are the two seams. WAHA and the future Agent Runtime can each be swapped without touching conversation or inbox logic.
+- **Fast Webhook Acknowledgement:** Persistence is synchronous (so a retry cannot duplicate a message) while the AI call runs after the response is sent (so a slow model cannot cause a redelivery).
+- **Versioned Migrations:** Drizzle SQL migrations replace the old startup `CREATE TABLE` / `ALTER TABLE` chain. A pre-migration database is detected, reshaped in place and stamped, so existing installs upgrade without data loss.
+- **SQLite Hardening:** WAL journaling, a 5s busy timeout, enforced foreign keys, and indexes on the conversation/message access paths.
+- **Secrets from the Environment:** No default credentials. `JWT_SECRET` is required in production, the admin account is bootstrapped from env, and stored bot API keys are never returned to the browser.
 
 ---
 
-## 7. Future Roadmap
-- **RAG Capability:** Integrating vector databases for "chat-with-your-docs" functionality.
-- **History Summarization:** Using LLMs to provide summaries of previous conversations to agents.
-- **Multi-Tenant Dashboard:** Extending the UI to support multiple simultaneous WhatsApp sessions.
+## 7. Deployment
+```
+Small VPS
+
+Docker Compose
+│
+├── wa-chat-flow          published (behind a TLS reverse proxy)
+│   ├── Next.js
+│   └── /storage/app/app.db
+│
+└── waha                  internal Docker network only
+    └── /storage/waha/*
+```
+
+WAHA's API can send messages from the connected number, so it is never exposed
+publicly — WA Chat Flow is the only public-facing service. Both volumes are
+backed up daily (`pnpm backup`, 7 days retained): the SQLite database via
+SQLite's online backup API, and WAHA's session storage as a tarball.
+
+---
+
+## 8. Future Roadmap
+- **Agent Runtime Handler:** A second `AIHandler` (`handler_type = external_agent`) delegating to an agent service that owns RAG, knowledge base, MCP and tools.
+- **Media Handling:** Storing and displaying images, audio and documents rather than recording their type only.
+- **Outbound Sync:** Capturing messages the operator sends from the phone itself (`fromMe` events).
+- **History Summarization:** Summarising long threads instead of truncating to the last 20 messages.

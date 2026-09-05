@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Badge, Button, Card, useToast } from '@/components/ui'
 
-type WAStatus = 'offline' | 'waiting_qr' | 'connected' | 'loading'
+type WAStatus = 'offline' | 'starting' | 'waiting_qr' | 'connected' | 'failed'
 
 type WASession = {
   id: string
@@ -15,6 +15,8 @@ type WASession = {
 function StatusBadge({ status }: { status: WAStatus }) {
   if (status === 'connected') return <Badge variant="green" dot>Connected</Badge>
   if (status === 'waiting_qr') return <Badge variant="yellow" dot>Waiting for scan</Badge>
+  if (status === 'starting') return <Badge variant="yellow" dot>Starting</Badge>
+  if (status === 'failed') return <Badge variant="red" dot>Failed</Badge>
   return <Badge variant="gray" dot>Offline</Badge>
 }
 
@@ -51,6 +53,7 @@ function SessionCard({
 
   useEffect(() => {
     fetchStatus()
+    // WAHA rotates the pairing code, so refetch it on every poll while scanning.
     const interval = setInterval(async () => {
       const s = await fetchStatus()
       if (s === 'waiting_qr') fetchQR()
@@ -64,16 +67,24 @@ function SessionCard({
 
   async function handleConnect() {
     setLoading(true)
-    await fetch('/api/wa/connect', {
+    const r = await fetch('/api/wa/connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId: session.id }),
     })
+
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}))
+      toast(data.error || 'Could not reach the WhatsApp gateway', 'error')
+      setLoading(false)
+      return
+    }
+
     let attempts = 0
     const poll = setInterval(async () => {
       const s = await fetchStatus()
       attempts++
-      if (s !== 'offline' || attempts >= 20) {
+      if (['waiting_qr', 'connected', 'failed'].includes(s) || attempts >= 20) {
         clearInterval(poll)
         setLoading(false)
       }
@@ -206,12 +217,12 @@ function SessionCard({
 
       {/* Actions */}
       <div className="flex items-center gap-2 mt-4 flex-wrap">
-        {status === 'offline' && (
+        {(status === 'offline' || status === 'failed') && (
           <Button size="sm" onClick={handleConnect} loading={loading}>
-            {loading ? 'Starting…' : 'Connect'}
+            {loading ? 'Starting…' : status === 'failed' ? 'Reconnect' : 'Connect'}
           </Button>
         )}
-        {status === 'waiting_qr' && (
+        {(status === 'waiting_qr' || status === 'starting') && (
           <Button size="sm" variant="secondary" onClick={handleLogout} loading={loading}>
             Cancel
           </Button>
@@ -221,7 +232,7 @@ function SessionCard({
             Disconnect
           </Button>
         )}
-        {status === 'offline' && (
+        {(status === 'offline' || status === 'failed') && (
           <Button size="sm" variant="secondary" onClick={handleDelete} loading={deleting}>
             Remove
           </Button>
@@ -345,8 +356,8 @@ export default function WAPage() {
             {[
               'Each WhatsApp number needs its own QR code scan',
               'You can connect multiple numbers simultaneously',
-              'Removing a number disconnects it and deletes its session data',
-              'Auto replies work independently per number',
+              'Sessions run in the WAHA gateway and survive app restarts',
+              'Removing a number logs it out and deletes its session data',
             ].map((tip, i) => (
               <li key={i} className="flex items-start gap-2">
                 <div className="w-4 h-4 rounded-full bg-[#F1F5F9] flex items-center justify-center shrink-0 mt-0.5">
