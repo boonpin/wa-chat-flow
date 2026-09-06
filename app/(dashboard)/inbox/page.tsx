@@ -248,6 +248,8 @@ function Thread({
     channelStatus: (channel?.status ?? (conversation.waSessionId ? 'unknown' : null)) as ChannelStatus | null,
     botName: effectiveBot?.name ?? null,
     botEnabled: effectiveBot?.enabled,
+    botProviderMissing: effectiveBot ? !effectiveBot.providerId : false,
+    botProviderEnabled: effectiveBot?.providerEnabled ?? undefined,
   })
 
   return (

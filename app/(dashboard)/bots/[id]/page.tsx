@@ -13,18 +13,19 @@ import {
   request,
   useAsyncData,
 } from '@/components/ui'
-import { BotForm, type BotRecord, type ToolChoice } from '../bot-form'
+import { BotForm, type BotRecord, type ProviderChoice, type ToolChoice } from '../bot-form'
 
 export default function EditBotPage() {
   const { id } = useParams<{ id: string }>()
 
   const load = useCallback(
     async (signal: AbortSignal) => {
-      const [bots, tools] = await Promise.all([
+      const [bots, tools, providers] = await Promise.all([
         request<BotRecord[]>('/api/bots', { signal }),
         request<ToolChoice[]>('/api/tools', { signal }),
+        request<ProviderChoice[]>('/api/ai-providers', { signal }),
       ])
-      return { bots, tools }
+      return { bots, tools, providers }
     },
     []
   )
@@ -64,7 +65,12 @@ export default function EditBotPage() {
           />
         </Panel>
       ) : (
-        <BotForm bot={bot} tools={data!.tools} otherDefaultName={otherDefault?.name ?? null} />
+        <BotForm
+          bot={bot}
+          tools={data!.tools}
+          providers={data!.providers}
+          otherDefaultName={otherDefault?.name ?? null}
+        />
       )}
     </PageBody>
   )

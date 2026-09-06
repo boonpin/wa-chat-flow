@@ -39,6 +39,9 @@ export const ContactsIcon = (p: IconProps) => (
 export const BotIcon = (p: IconProps) => (
   <Icon {...p}><rect x="3" y="9" width="18" height="11" rx="2.5" /><path d="M12 9V5.5M9.5 3.5h5" /><path d="M8.5 14v1.5M15.5 14v1.5" /></Icon>
 )
+export const KeyIcon = (p: IconProps) => (
+  <Icon {...p}><circle cx="7.5" cy="15.5" r="4" /><path d="m10.5 12.5 8-8M16 7l2.5 2.5M13.5 9.5 16 12" /></Icon>
+)
 export const ToolIcon = (p: IconProps) => (
   <Icon {...p}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94L14.7 6.3Z" /></Icon>
 )

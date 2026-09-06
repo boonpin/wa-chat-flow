@@ -17,11 +17,16 @@ export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json().catch(() => ({}))
-  const input = readBotInput(body)
+  const { input, error } = readBotInput(await req.json().catch(() => ({})))
+  if (error) return NextResponse.json({ error }, { status: 400 })
 
   if (!input.name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
-  if (!input.provider) return NextResponse.json({ error: 'provider is required' }, { status: 400 })
+  if (!input.providerId) {
+    return NextResponse.json(
+      { error: 'providerId is required — pick the AI provider this bot answers through' },
+      { status: 400 }
+    )
+  }
 
   const now = new Date().toISOString()
   const id = uuidv4()
@@ -34,9 +39,7 @@ export async function POST(req: NextRequest) {
     .values({
       id,
       name: input.name.trim(),
-      provider: input.provider,
-      apiKey: input.apiKey ?? null,
-      model: input.model ?? '',
+      providerId: input.providerId,
       prompt: input.prompt ?? '',
       handlerType: input.handlerType ?? 'direct',
       enabled: input.enabled ?? true,

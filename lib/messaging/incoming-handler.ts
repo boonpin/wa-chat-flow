@@ -11,6 +11,7 @@ import {
 } from '@/lib/conversation/service'
 import { buildContext } from '@/lib/ai/context'
 import { resolveHandler } from '@/lib/ai/handler'
+import { attachUsageToMessage } from '@/lib/ai/usage'
 import { resolveTools } from '@/lib/tools/registry'
 import { getProvider } from '@/lib/wa/provider'
 import { selectBot } from './bot-selection'
@@ -200,6 +201,11 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
 
   const provider = getProvider()
 
+  // Filled in by the handler as it calls the model. Declared out here because
+  // the reply can throw part-way through, and those tokens still belong to the
+  // failure row written in the catch.
+  const usageIds: string[] = []
+
   try {
     // ─── 8. Context + AI ──────────────────────────────────────────────────────
     // The burst is joined into one turn rather than replayed as several: it is
@@ -215,6 +221,7 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
       conversationId: conversation.id,
       contactId: contact.id,
       tools: resolveTools(bot.id),
+      usageSink: usageIds,
     })
 
     // Tool runs are recorded even when the model then falls silent, so an
@@ -236,10 +243,19 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
       senderType: 'ai',
     })
 
+    // Now that the reply row exists, the calls that paid for it can name it.
+    // Done whether or not the send succeeded: the row is written before the
+    // send either way, and a reply that cost tokens and never arrived is
+    // exactly the one an operator wants the number for.
+    attachUsageToMessage(usageIds, sent.messageId)
+
     if (sent.ok) {
       const answered = context.pending.length
+      const tokens = output.usage
+        ? ` [${output.usage.inputTokens} in / ${output.usage.outputTokens} out]`
+        : ''
       console.log(
-        `[wa] [AI] ${contact.name || contact.phoneNumber}${answered > 1 ? ` (${answered} messages)` : ''}: ${reply}`
+        `[wa] [AI] ${contact.name || contact.phoneNumber}${answered > 1 ? ` (${answered} messages)` : ''}${tokens}: ${reply}`
       )
     }
 
@@ -249,7 +265,10 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     console.error('[wa] AI reply error:', err)
-    recordAiFailure(conversation.id, contact.id, provider.name, error)
+    // Rounds that completed before the failure were still billed, so they are
+    // linked to the failure row rather than left floating on the ledger.
+    const failureId = recordAiFailure(conversation.id, contact.id, provider.name, error)
+    attachUsageToMessage(usageIds, failureId)
     return { status: 'failed', error }
   } finally {
     // The indicator outlives a crashed reply otherwise, leaving the customer
@@ -308,10 +327,12 @@ function recordAiFailure(
   contactId: string,
   provider: string,
   error: string
-): void {
+): string {
+  const id = uuidv4()
+
   db.insert(messages)
     .values({
-      id: uuidv4(),
+      id,
       conversationId,
       contactId,
       provider,
@@ -325,6 +346,8 @@ function recordAiFailure(
       createdAt: new Date().toISOString(),
     })
     .run()
+
+  return id
 }
 
 function isUniqueViolation(err: unknown): boolean {

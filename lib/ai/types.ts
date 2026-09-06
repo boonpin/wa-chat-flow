@@ -1,5 +1,7 @@
 import type { aiBots } from '@/lib/db/schema'
 import type { ToolDefinition, ToolRun } from '@/lib/tools/types'
+import type { TokenUsage } from './providers/types'
+import type { BotConnection } from './connection'
 
 export type Bot = typeof aiBots.$inferSelect
 
@@ -20,12 +22,27 @@ export interface AIInput {
   contactId: string
   /** Tools this bot may call. Omitted or empty = plain completion, as before. */
   tools?: ToolDefinition[]
+  /**
+   * Where the handler records the ledger rows it writes, appended as it goes.
+   *
+   * A collector rather than a return value because a reply that throws still
+   * spent tokens, and the caller still writes a message row for the failure —
+   * so the ids have to survive the exception to be linked to it.
+   */
+  usageSink?: string[]
 }
 
 export interface AIOutput {
   text: string
   /** What the model ran and how each went, so the caller can leave an audit trail. */
   toolRuns?: ToolRun[]
+  /**
+   * Tokens across every API call this reply took. The per-call rows are already
+   * in `ai_usage` — this is the summary, for logging the cost of one answer.
+   */
+  usage?: TokenUsage
+  /** Which AI account answered. Absent for a handler that does not call an LLM. */
+  connection?: BotConnection
 }
 
 /**

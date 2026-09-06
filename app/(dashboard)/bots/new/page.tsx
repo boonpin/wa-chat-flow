@@ -10,15 +10,16 @@ import {
   request,
   useAsyncData,
 } from '@/components/ui'
-import { BotForm, type BotRecord, type ToolChoice } from '../bot-form'
+import { BotForm, type BotRecord, type ProviderChoice, type ToolChoice } from '../bot-form'
 
 export default function NewBotPage() {
   const load = useCallback(async (signal: AbortSignal) => {
-    const [bots, tools] = await Promise.all([
+    const [bots, tools, providers] = await Promise.all([
       request<BotRecord[]>('/api/bots', { signal }),
       request<ToolChoice[]>('/api/tools', { signal }),
+      request<ProviderChoice[]>('/api/ai-providers', { signal }),
     ])
-    return { bots, tools }
+    return { bots, tools, providers }
   }, [])
   const { data, loading, error, refresh } = useAsyncData(load, [load])
 
@@ -42,7 +43,12 @@ export default function NewBotPage() {
           <ErrorState title="Could not open the editor" detail={error} onRetry={refresh} />
         </Panel>
       ) : (
-        <BotForm bot={null} tools={data!.tools} otherDefaultName={currentDefault?.name ?? null} />
+        <BotForm
+          bot={null}
+          tools={data!.tools}
+          providers={data!.providers}
+          otherDefaultName={currentDefault?.name ?? null}
+        />
       )}
     </PageBody>
   )

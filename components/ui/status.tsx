@@ -211,6 +211,10 @@ export function deriveBlockers(input: {
   channelStatus?: ChannelStatus | null
   botName?: string | null
   botEnabled?: boolean
+  /** True when the bot's AI provider row is gone — it cannot call anything. */
+  botProviderMissing?: boolean
+  /** False when that provider exists but is turned off. */
+  botProviderEnabled?: boolean
 }): Blocker[] {
   const blockers: Blocker[] = []
 
@@ -242,6 +246,20 @@ export function deriveBlockers(input: {
       blockers.push({
         message: `“${input.botName}” is turned off, so a different bot or none at all will answer.`,
         action: { label: 'Open AI bots', href: '/bots' },
+      })
+    } else if (input.botProviderMissing) {
+      // The bot is otherwise ready, so nothing else reports this: the failure
+      // would first appear as a customer who never got an answer.
+      blockers.push({
+        message: `“${input.botName}” has no AI provider, so every reply it tries will fail.`,
+        action: { label: 'Open AI providers', href: '/ai-providers' },
+        tone: 'danger',
+      })
+    } else if (input.botProviderEnabled === false) {
+      blockers.push({
+        message: `The AI provider for “${input.botName}” is turned off, so its replies will fail.`,
+        action: { label: 'Open AI providers', href: '/ai-providers' },
+        tone: 'danger',
       })
     }
   }

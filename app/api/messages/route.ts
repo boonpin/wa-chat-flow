@@ -5,6 +5,7 @@ import { messages, contacts } from '@/lib/db/schema'
 import { count, eq, desc } from 'drizzle-orm'
 import { getOrCreateOpenConversation } from '@/lib/conversation/service'
 import { sendOutgoingMessage } from '@/lib/messaging/outgoing'
+import { usageByMessage } from '@/lib/ai/usage'
 
 const DEFAULT_PAGE_SIZE = 25
 const MAX_PAGE_SIZE = 200
@@ -58,7 +59,18 @@ export async function GET(req: Request) {
     .offset((page - 1) * pageSize)
     .all()
 
-  return NextResponse.json({ rows, total, page, pageSize, lastPage })
+  // One grouped query for the whole page, not one per row. Null for anything
+  // that never called a model — a human reply has no tokens, it does not have
+  // zero of them.
+  const tokens = usageByMessage(rows.map((row) => row.id))
+
+  return NextResponse.json({
+    rows: rows.map((row) => ({ ...row, usage: tokens.get(row.id) ?? null })),
+    total,
+    page,
+    pageSize,
+    lastPage,
+  })
 }
 
 function clamp(value: number, fallback: number, max: number): number {

@@ -43,6 +43,11 @@ replaced without touching business logic:
   **Never import `waha-provider` outside `lib/wa/`; call `getProvider()`.**
 - **`AIHandler`** (`lib/ai/handler.ts`) — `DirectAIHandler` calls OpenAI/Gemini
   today; `handler_type = external_agent` is reserved for a future Agent Runtime.
+- **`AIProvider`** (`lib/ai/connection.ts`) — the AI *account*: vendor, key and
+  model. A bot names one; `resolveConnection()` turns a bot into the credentials
+  a call is made and billed against. `lib/ai/providers/` holds one dumb
+  translator per vendor and is the only place either SDK's wire format is known.
+  **Never read a key off a bot; call `resolveConnection()`.**
 - **`CaptureSink`** (`lib/tools/sinks/types.ts`) — where a captured row is
   written. `AppsScriptSink` is the sole implementation, and
   `lib/tools/sinks/apps-script.ts` is the only file that knows its wire format.
@@ -58,10 +63,13 @@ replaced without touching business logic:
 - [lib/conversation/service.ts](lib/conversation/service.ts) — threads, modes, statuses, the Inbox queries
 - [lib/ai/context.ts](lib/ai/context.ts) — conversation memory (last 20 text messages)
 - [lib/ai/direct-handler.ts](lib/ai/direct-handler.ts) — LLM call **and the tool loop**; providers under `lib/ai/providers/` are dumb translators between `ProviderRequest` and each SDK's wire format
+- [lib/ai/connection.ts](lib/ai/connection.ts) — bot → AI account (vendor, key, model), with the env key as the fallback
+- [lib/ai/provider-kinds.ts](lib/ai/provider-kinds.ts) — the vendor list and its labels, free of SDK imports so the dashboard can import it
+- [lib/ai/usage.ts](lib/ai/usage.ts) — the token ledger; one row per API call, written by the handler as each call returns and linked to its message afterwards
 - [lib/tools/](lib/tools/) — `registry.ts` (config rows → the function schemas a model sees), `runner.ts` (execute one call), `sinks/` (where the row lands)
 - [lib/db/index.ts](lib/db/index.ts) — pragmas, legacy baseline, migrations, default seeding
 - [lib/db/legacy.ts](lib/db/legacy.ts) — one-time in-place upgrade for pre-Drizzle databases
-- [app/api/messages/route.ts](app/api/messages/route.ts) — the Logs feed. Paginated, returning `{ rows, total, page, pageSize, lastPage }`; ordered by `(created_at, id)` because a tie without the id tiebreak can repeat or drop a row across a page boundary
+- [app/api/messages/route.ts](app/api/messages/route.ts) — the Logs feed. Paginated, returning `{ rows, total, page, pageSize, lastPage }`; ordered by `(created_at, id)` because a tie without the id tiebreak can repeat or drop a row across a page boundary. Each row carries `usage` (token totals) or null — one grouped query for the page, never one per row
 - [app/api/messages/[id]/route.ts](app/api/messages/[id]/route.ts) — one log entry in full, resolving `messages.tool_invocation_id` into the capture behind a tool row; backs the Logs detail drawer
 - [app/api/webhooks/waha/route.ts](app/api/webhooks/waha/route.ts) — HMAC-verified, deliberately thin; no AI logic here
 - [proxy.ts](proxy.ts) — cookie auth for everything except `/api/webhooks/`
@@ -74,6 +82,17 @@ reconciliation happens lazily instead, via `ensureSessionsReconciled()` in
 [lib/wa/sessions.ts](lib/wa/sessions.ts). Do not reintroduce the hook.
 
 ### Data model
+
+`ai_providers → ai_bots → conversations`. A bot carries instructions and tools;
+its **provider** carries the vendor, the API key and the model. Two bots sharing
+an account share one row, and a key is stored once rather than copied onto every
+bot — `resolveConnection()` (`lib/ai/connection.ts`) is the only way to read it.
+A provider with no key of its own falls back to `OPENAI_API_KEY` /
+`GEMINI_API_KEY`; a bot with **no** provider is a hard failure, reported in the
+thread rather than answered on a guessed default.
+
+Deleting a provider is refused while a bot still points at it — the alternative
+is a bot that only fails once a customer is already waiting.
 
 `contacts → conversations → messages`. A contact has at most one **open**
 conversation; resolving it and receiving another message starts a new one.
@@ -132,6 +151,30 @@ conversation creation in `persistIncomingMessage`, *not* only checked at reply
 time, so it sticks for the whole thread; `runAutoReply` re-checks it because the
 policy can tighten while the reply window is open. Both halves are
 needed — **changing one without the other silently breaks the mode.**
+
+### Token accounting
+
+`ai_usage` is one row per **API call**, not per reply: the tool loop asks the
+model again after every round, and each of those asks is billed. Rows are
+written by `DirectAIHandler` as each call returns, which is why a reply that
+dies on round two still accounts for round one — the case where an operator most
+wants the number.
+
+`kind` and `model` are **snapshots, not joins**. What a call cost stays true
+after the provider is edited or the bot is repointed, and a deleted provider
+leaves its history readable rather than orphaned. Failed calls are recorded too,
+with zero tokens and the error: a rate limit and a bad key look nothing alike in
+the ledger, and both are invisible if only successes are counted.
+
+`ai_usage.message_id` is written in a **second pass**, and has to be. The calls
+happen before the message row exists, so `runAutoReply` owns a `usageSink` array
+that the handler appends to, then calls `attachUsageToMessage` once the row is
+there — for a successful send, a failed send, *and* the system row written when
+the reply throws, since rounds that completed before a crash were still billed.
+A sink rather than a return value is what makes that last case possible: the ids
+must survive the exception. Null `message_id` therefore means one specific
+thing — tokens spent on a reply that never became a message at all — and the
+dashboard shows a dash, never a zero, wherever a row never called a model.
 
 `tools → bot_tools → ai_bots`. A tool's `fields` (JSON) drives three things at
 once: the JSON Schema the model sees, the server-side validation, and the sheet

@@ -22,8 +22,13 @@ export interface ChannelView {
 export interface BotSummary {
   id: string
   name: string
-  provider: string
-  model: string
+  /** All three come from the bot's AI provider row, and are null once it is gone. */
+  providerId: string | null
+  providerName: string | null
+  provider: string | null
+  model: string | null
+  /** Null when there is no provider row at all; false when it is turned off. */
+  providerEnabled: boolean | null
   enabled: boolean
   isDefault: boolean
   hasApiKey: boolean

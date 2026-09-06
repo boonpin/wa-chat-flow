@@ -1,19 +1,31 @@
 import { db } from '@/lib/db'
-import { botTools, type aiBots } from '@/lib/db/schema'
+import { aiProviders, botTools, type aiBots } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 
 type Bot = typeof aiBots.$inferSelect
 
-const PROVIDERS = ['openai', 'gemini']
 const HANDLER_TYPES = ['direct', 'external_agent']
 
 /**
- * The stored API key never leaves the server — the client only learns whether
- * one is set, so an existing key cannot be read back out of the dashboard.
+ * A bot no longer carries a vendor, a key or a model — its AI provider does.
+ * The provider's vendor and model are folded in here so the dashboard can
+ * describe a bot in one request, but the key itself never leaves the server.
  */
 export function toPublicBot(bot: Bot) {
-  const { apiKey, ...rest } = bot
-  return { ...rest, hasApiKey: !!apiKey, toolIds: listToolIds(bot.id) }
+  const provider = bot.providerId
+    ? db.select().from(aiProviders).where(eq(aiProviders.id, bot.providerId)).get()
+    : undefined
+
+  return {
+    ...bot,
+    /** Null when the provider row was deleted out from under the bot. */
+    providerName: provider?.name ?? null,
+    provider: provider?.kind ?? null,
+    model: provider?.model ?? null,
+    providerEnabled: provider?.enabled ?? null,
+    hasApiKey: !!provider?.apiKey,
+    toolIds: listToolIds(bot.id),
+  }
 }
 
 function listToolIds(botId: string): string[] {
@@ -40,10 +52,8 @@ export function setBotTools(botId: string, toolIds: string[]): void {
 
 export interface BotInput {
   name?: string
-  provider?: string
-  /** Undefined means "leave unchanged"; empty string means "clear it". */
-  apiKey?: string | null
-  model?: string
+  /** The AI provider row this bot answers through. */
+  providerId?: string
   prompt?: string
   handlerType?: string
   enabled?: boolean
@@ -52,15 +62,16 @@ export interface BotInput {
   toolIds?: string[]
 }
 
+export interface BotInputResult {
+  input: BotInput
+  error?: string
+}
+
 /** Whitelists the fields a client may set, so nothing else can be injected. */
-export function readBotInput(body: Record<string, unknown>): BotInput {
+export function readBotInput(body: Record<string, unknown>): BotInputResult {
   const input: BotInput = {}
 
   if (typeof body.name === 'string') input.name = body.name
-  if (typeof body.provider === 'string' && PROVIDERS.includes(body.provider)) {
-    input.provider = body.provider
-  }
-  if (typeof body.model === 'string') input.model = body.model
   if (typeof body.prompt === 'string') input.prompt = body.prompt
   if (typeof body.handlerType === 'string' && HANDLER_TYPES.includes(body.handlerType)) {
     input.handlerType = body.handlerType
@@ -72,12 +83,13 @@ export function readBotInput(body: Record<string, unknown>): BotInput {
     input.toolIds = body.toolIds.filter((id): id is string => typeof id === 'string')
   }
 
-  // A blank key from the edit form means "keep what is stored".
-  if (typeof body.apiKey === 'string' && body.apiKey.trim().length > 0) {
-    input.apiKey = body.apiKey.trim()
-  } else if (body.apiKey === null) {
-    input.apiKey = null
+  // Checked here rather than at reply time: a bot saved against a provider that
+  // does not exist would only fail once a customer was already waiting.
+  if (typeof body.providerId === 'string' && body.providerId) {
+    const provider = db.select().from(aiProviders).where(eq(aiProviders.id, body.providerId)).get()
+    if (!provider) return { input, error: 'The selected AI provider no longer exists' }
+    input.providerId = body.providerId
   }
 
-  return input
+  return { input }
 }

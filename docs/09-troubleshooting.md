@@ -106,8 +106,13 @@ Check all four conditions:
 2. The conversation's **AI Auto Reply** toggle is ON (`Inbox`)
 3. A bot is available — assigned to the conversation or contact, or set as the
    system default — and that bot is **enabled**
-4. The bot has a working API key, either stored on the bot or in
-   `OPENAI_API_KEY` / `GEMINI_API_KEY`
+4. The bot has an AI provider, that provider is **enabled**, and it has a
+   working API key — either stored on the provider or in `OPENAI_API_KEY` /
+   `GEMINI_API_KEY`
+
+A bot whose provider was deleted or turned off shows a warning on the `AI bots`
+list and in the Inbox thread header, and every reply it attempts fails with the
+reason in the thread.
 
 The message is always stored even when the AI does not reply, so it will be in
 the Inbox either way. If the AI failed rather than skipped, the thread shows a

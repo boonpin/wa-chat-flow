@@ -51,3 +51,16 @@ export function initial(name: string | null | undefined, phone: string | null | 
 export function plural(count: number, one: string, many?: string): string {
   return count === 1 ? one : (many ?? `${one}s`)
 }
+
+/**
+ * Token counts, which run from three digits to eight.
+ *
+ * Exact below a hundred thousand, where the difference between 40,000 and
+ * 41,500 is something an operator reads; compact above it, where it is not.
+ */
+export function tokenCount(n: number): string {
+  if (!Number.isFinite(n)) return '0'
+  return n < 100_000
+    ? n.toLocaleString('en-US')
+    : new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+}

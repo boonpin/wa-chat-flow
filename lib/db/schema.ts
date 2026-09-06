@@ -7,13 +7,38 @@ export const users = sqliteTable('users', {
   createdAt: text('created_at').notNull(),
 })
 
+/**
+ * One AI account: which vendor, the key that bills to it, and the model to run.
+ *
+ * A bot points at a provider rather than carrying its own key, so the key is
+ * configured once, the model is picked from what that key can actually reach
+ * (see `listModels` in lib/ai/providers/), and every API call has an account to
+ * attribute its tokens to — which is what `ai_usage` records.
+ */
+export const aiProviders = sqliteTable('ai_providers', {
+  id: text('id').primaryKey(),
+  /** Operator-facing label, e.g. "OpenAI — production". Free text. */
+  name: text('name').notNull(),
+  /** Which SDK translates the call: openai | gemini. */
+  kind: text('kind').notNull(),
+  /** Optional. Falls back to OPENAI_API_KEY / GEMINI_API_KEY from the env. */
+  apiKey: text('api_key'),
+  /** Model id, chosen from the vendor's own model list. */
+  model: text('model').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+})
+
 export const aiBots = sqliteTable('ai_bots', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  provider: text('provider').notNull(), // openai | gemini
-  /** Optional. Falls back to OPENAI_API_KEY / GEMINI_API_KEY from the env. */
-  apiKey: text('api_key'),
-  model: text('model').notNull(),
+  /**
+   * The AI account this bot answers through — vendor, key and model all come
+   * from that row (see `ai_providers`). Null only for a bot whose provider was
+   * deleted, which `resolveConnection` reports rather than silently guessing.
+   */
+  providerId: text('provider_id'),
   prompt: text('prompt').notNull(),
   /** direct = call the LLM straight; external_agent = hand off to Agent Runtime. */
   handlerType: text('handler_type').notNull().default('direct'),
@@ -228,5 +253,51 @@ export const toolInvocations = sqliteTable(
   (t) => [
     index('idx_tool_invocations_conversation').on(t.conversationId, t.createdAt),
     index('idx_tool_invocations_status').on(t.status, t.createdAt),
+  ]
+)
+
+/**
+ * One row per API call to a model provider, written whether the call succeeded
+ * or not.
+ *
+ * A single reply can be several calls — the tool loop asks again after every
+ * round — so this is not one row per message. `kind` and `model` are snapshots
+ * rather than joins: what the call actually cost stays true after the provider
+ * row is edited or the bot is repointed at another account.
+ */
+export const aiUsage = sqliteTable(
+  'ai_usage',
+  {
+    id: text('id').primaryKey(),
+    /** Null once the provider row is gone; the snapshot columns still read. */
+    providerId: text('provider_id'),
+    botId: text('bot_id'),
+    conversationId: text('conversation_id'),
+    /**
+     * The reply these tokens paid for, stamped on *after* the message is sent —
+     * the call happens before the message row exists. Null is normal and means
+     * one of two things: the reply failed before it was sent, or the call was a
+     * tool round whose message never materialised. Several rows share one id
+     * when the model needed more than one round.
+     */
+    messageId: text('message_id'),
+    kind: text('kind').notNull(),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    /** As the vendor reported it — not always input + output. */
+    totalTokens: integer('total_tokens').notNull().default(0),
+    /** Which round of the tool loop this call was; 0 is the first ask. */
+    round: integer('round').notNull().default(0),
+    status: text('status').notNull().default('ok'), // ok | failed
+    error: text('error'),
+    latencyMs: integer('latency_ms'),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_ai_usage_provider').on(t.providerId, t.createdAt),
+    index('idx_ai_usage_bot').on(t.botId, t.createdAt),
+    index('idx_ai_usage_conversation').on(t.conversationId, t.createdAt),
+    index('idx_ai_usage_message').on(t.messageId),
   ]
 )

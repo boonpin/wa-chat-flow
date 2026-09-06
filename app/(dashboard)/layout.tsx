@@ -12,6 +12,7 @@ import {
   Drawer,
   HelpIcon,
   InboxIcon,
+  KeyIcon,
   MenuIcon,
   OverviewIcon,
   ReplySettingsIcon,
@@ -57,6 +58,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: 'Automation',
     items: [
       { href: '/bots', label: 'AI bots', icon: <BotIcon /> },
+      { href: '/ai-providers', label: 'AI providers', icon: <KeyIcon /> },
       { href: '/tools', label: 'Tools', icon: <ToolIcon /> },
       { href: '/automation/replies', label: 'Reply settings', icon: <ReplySettingsIcon /> },
       { href: '/campaigns', label: 'Campaigns', icon: <CampaignIcon />, aliases: ['/blast'] },

@@ -13,7 +13,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const existing = db.select().from(aiBots).where(eq(aiBots.id, id)).get()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const input = readBotInput(await req.json().catch(() => ({})))
+  const { input, error } = readBotInput(await req.json().catch(() => ({})))
+  if (error) return NextResponse.json({ error }, { status: 400 })
 
   if (input.isDefault) {
     db.update(aiBots).set({ isDefault: false }).run()

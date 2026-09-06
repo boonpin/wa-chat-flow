@@ -3,6 +3,8 @@ import { getSession } from '@/lib/auth/session'
 import { db } from '@/lib/db'
 import { contacts, conversations, messages, toolInvocations, tools } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { usageCallsForMessage } from '@/lib/ai/usage'
+import { getAiProvider } from '@/lib/ai/connection'
 
 /**
  * Everything known about one log entry.
@@ -46,7 +48,37 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  return NextResponse.json({ ...row, invocation: resolveInvocation(row.toolInvocationId) })
+  return NextResponse.json({
+    ...row,
+    invocation: resolveInvocation(row.toolInvocationId),
+    ...resolveUsage(row.id),
+  })
+}
+
+/**
+ * What this reply cost, and the calls it took.
+ *
+ * Both are absent for every row that never called a model — a customer message,
+ * a human reply, a tool audit row — which is what lets the dashboard show a
+ * dash rather than a misleading zero.
+ */
+function resolveUsage(messageId: string) {
+  const calls = usageCallsForMessage(messageId)
+  if (calls.length === 0) return { usage: null, usageCalls: [] }
+
+  const usage = calls.reduce(
+    (total, call) => ({
+      calls: total.calls + 1,
+      inputTokens: total.inputTokens + call.inputTokens,
+      outputTokens: total.outputTokens + call.outputTokens,
+      totalTokens: total.totalTokens + call.totalTokens,
+    }),
+    { calls: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+  )
+
+  const provider = calls[0].providerId ? getAiProvider(calls[0].providerId) : undefined
+
+  return { usage: { ...usage, providerName: provider?.name ?? null }, usageCalls: calls }
 }
 
 /**

@@ -18,18 +18,20 @@ import {
   request,
   useAsyncData,
 } from '@/components/ui'
-import type { BotRecord, ToolChoice } from './bot-form'
+import type { BotRecord, ProviderChoice, ToolChoice } from './bot-form'
+import { providerLabel } from '@/lib/ai/provider-kinds'
 import { resolveFallbackBot, useWorkspaceStatus } from '@/components/workspace-status'
 
 export default function BotsPage() {
   const { status } = useWorkspaceStatus()
   const load = useCallback(
     async (signal: AbortSignal) => {
-      const [bots, tools] = await Promise.all([
+      const [bots, tools, providers] = await Promise.all([
         request<BotRecord[]>('/api/bots', { signal }),
         request<ToolChoice[]>('/api/tools', { signal }),
+        request<ProviderChoice[]>('/api/ai-providers', { signal }),
       ])
-      return { bots, tools }
+      return { bots, tools, providers }
     },
     []
   )
@@ -51,6 +53,16 @@ export default function BotsPage() {
           </LinkButton>
         }
       />
+
+      {data && data.providers.length === 0 && (
+        <Banner tone="warning" title="No AI provider is configured" className="mb-5">
+          A bot answers through an AI provider — the vendor, key and model live there.{' '}
+          <Link href="/ai-providers/new" className="font-semibold underline underline-offset-2">
+            Add one
+          </Link>{' '}
+          before creating a bot.
+        </Banner>
+      )}
 
       {fallback.conflict && fallback.bot && (
         <Banner tone="warning" title="Two bots are marked as the default" className="mb-5">
@@ -99,10 +111,20 @@ export default function BotsPage() {
                         <span className="text-sm font-medium text-ink">{bot.name}</span>
                         {isFallback && <Badge variant="success">Default</Badge>}
                         {!bot.enabled && <Badge variant="neutral">Turned off</Badge>}
+                        {bot.providerEnabled === false && (
+                          <Badge variant="warning">Provider off</Badge>
+                        )}
                       </span>
                       <span className="mt-1 block text-sm text-ink-muted">
-                        {bot.provider === 'openai' ? 'OpenAI' : 'Google Gemini'} · {bot.model} ·{' '}
-                        {bot.hasApiKey ? 'own API key stored' : 'using the server key'}
+                        {bot.providerName ? (
+                          <>
+                            {bot.providerName} · {providerLabel(bot.provider ?? '')} · {bot.model}
+                          </>
+                        ) : (
+                          // The provider row is gone, so this bot cannot answer at
+                          // all — say so here rather than only inside the editor.
+                          <span className="font-medium text-danger">No AI provider</span>
+                        )}
                       </span>
                       <span className="mt-1 block text-sm text-ink-soft">
                         {attached.length > 0
@@ -122,8 +144,8 @@ export default function BotsPage() {
       </Panel>
 
       <p className="mt-4 text-xs leading-4 text-ink-soft">
-        A stored API key does not prove the key or model works. The first real conversation is what
-        verifies it.
+        A bot holds the instructions; its AI provider holds the key and the model. Two bots can
+        share one provider, and their tokens are counted against it separately.
       </p>
     </PageBody>
   )

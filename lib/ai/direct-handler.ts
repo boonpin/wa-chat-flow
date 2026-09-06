@@ -1,6 +1,7 @@
-import * as openai from './providers/openai'
-import * as gemini from './providers/gemini'
-import type { ProviderRequest, ProviderResponse, ProviderTurn } from './providers/types'
+import { getProviderModule } from './providers'
+import type { ProviderResponse, ProviderTurn } from './providers/types'
+import { resolveConnection, type BotConnection } from './connection'
+import { ZERO_USAGE, addUsage, recordUsage } from './usage'
 import type { AIHandler, AIInput, AIOutput } from './types'
 import { executeTool } from '@/lib/tools/runner'
 import type { ToolContext, ToolRun } from '@/lib/tools/types'
@@ -9,6 +10,10 @@ import type { ToolContext, ToolRun } from '@/lib/tools/types'
  * Calls an LLM provider directly with the bot prompt plus recent conversation
  * history. No knowledge base, no retrieval — the bot prompt is the whole
  * business context, which is what an SME actually maintains.
+ *
+ * The vendor, key and model all come from the bot's AI provider row, resolved
+ * once per reply (`resolveConnection`) so every round of the loop bills the
+ * same account and the ledger has something to attribute tokens to.
  *
  * When the bot has tools attached, this also owns the tool loop: ask the model,
  * run whatever it asked for, feed the results back, ask again. Providers stay
@@ -24,17 +29,10 @@ import type { ToolContext, ToolRun } from '@/lib/tools/types'
  */
 const MAX_TOOL_ROUNDS = 3
 
-interface Provider {
-  generate(req: ProviderRequest): Promise<ProviderResponse>
-  resolveApiKey(input: AIInput): string
-}
-
-const PROVIDERS: Record<string, Provider> = { openai, gemini }
-
 export class DirectAIHandler implements AIHandler {
   async reply(input: AIInput): Promise<AIOutput> {
-    const provider = PROVIDERS[input.bot.provider]
-    if (!provider) throw new Error(`Unknown AI provider: ${input.bot.provider}`)
+    const connection = resolveConnection(input.bot)
+    const provider = getProviderModule(connection.kind)
 
     const turns: ProviderTurn[] = [
       ...input.history.map((turn) => ({ role: turn.role, content: turn.content }) as ProviderTurn),
@@ -43,24 +41,28 @@ export class DirectAIHandler implements AIHandler {
 
     const base = {
       prompt: input.bot.prompt,
-      model: input.bot.model,
-      apiKey: provider.resolveApiKey(input),
+      model: connection.model,
+      apiKey: connection.apiKey,
       ...(input.tools?.length ? { tools: input.tools } : {}),
     }
 
     const runs: ToolRun[] = []
+    let usage = ZERO_USAGE
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       // On the final round, drop the tools entirely: the model has spent its
       // budget and must now answer the customer in words.
       const exhausted = round === MAX_TOOL_ROUNDS
-      const response = await provider.generate({
-        ...base,
-        turns,
-        ...(exhausted ? { tools: undefined } : {}),
-      })
+      const response = await this.call(
+        () => provider.generate({ ...base, turns, ...(exhausted ? { tools: undefined } : {}) }),
+        { connection, input, round }
+      )
 
-      if (response.kind === 'text') return { text: response.text, toolRuns: runs }
+      usage = addUsage(usage, response.usage)
+
+      if (response.kind === 'text') {
+        return { text: response.text, toolRuns: runs, usage, connection }
+      }
 
       turns.push({ role: 'assistant_tool_calls', calls: response.calls })
 
@@ -77,7 +79,44 @@ export class DirectAIHandler implements AIHandler {
     }
 
     // Unreachable: the last round runs without tools, so it must return text.
-    return { text: '', toolRuns: runs }
+    return { text: '', toolRuns: runs, usage, connection }
+  }
+
+  /**
+   * One API call, always leaving a ledger row behind.
+   *
+   * The failure path records too: a call that was rejected still tells the
+   * operator which account and model the bot is failing on, and a rate limit
+   * looks nothing like a bad key in the log.
+   */
+  private async call(
+    send: () => Promise<ProviderResponse>,
+    meta: { connection: BotConnection; input: AIInput; round: number }
+  ): Promise<ProviderResponse> {
+    const startedAt = Date.now()
+    const base = {
+      connection: meta.connection,
+      botId: meta.input.bot.id,
+      conversationId: meta.input.conversationId,
+      round: meta.round,
+    }
+
+    try {
+      const response = await send()
+      const id = recordUsage({ ...base, usage: response.usage, latencyMs: Date.now() - startedAt })
+      if (id) meta.input.usageSink?.push(id)
+      return response
+    } catch (err) {
+      // Collected too: the failed round is still linked to the reply it was
+      // part of, so a thread that eventually answered shows what it cost to.
+      const id = recordUsage({
+        ...base,
+        latencyMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      if (id) meta.input.usageSink?.push(id)
+      throw err
+    }
   }
 }
 

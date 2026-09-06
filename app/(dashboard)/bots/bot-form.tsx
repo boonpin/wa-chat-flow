@@ -8,11 +8,9 @@ import {
   Banner,
   Button,
   ConfirmDialog,
-  Field,
   FormSection,
   Input,
   Panel,
-  SecretField,
   Select,
   Switch,
   Textarea,
@@ -20,17 +18,33 @@ import {
   request,
   useToast,
 } from '@/components/ui'
+import { providerLabel } from '@/lib/ai/provider-kinds'
 
 export interface BotRecord {
   id: string
   name: string
-  provider: string
+  /** The AI provider row this bot answers through. */
+  providerId: string | null
+  /** Folded in from that row for display; null when it has been deleted. */
+  providerName: string | null
+  provider: string | null
+  model: string | null
+  providerEnabled: boolean | null
   hasApiKey: boolean
-  model: string
   prompt: string
   enabled: boolean
   isDefault: boolean
   toolIds: string[]
+}
+
+/** An AI account a bot can answer through. */
+export interface ProviderChoice {
+  id: string
+  name: string
+  kind: string
+  model: string
+  enabled: boolean
+  hasApiKey: boolean
 }
 
 export interface ToolChoice {
@@ -62,34 +76,22 @@ const TEMPLATES = [
   },
 ]
 
-/** Suggestions, not a closed list — a stored or newer model ID must survive. */
-const MODEL_SUGGESTIONS: Record<string, string[]> = {
-  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
-  gemini: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'],
-}
-
-const PROVIDER_LABEL: Record<string, string> = { openai: 'OpenAI', gemini: 'Google Gemini' }
-
 interface FormState {
   name: string
-  provider: string
-  model: string
+  providerId: string
   prompt: string
-  apiKey: string
   enabled: boolean
   isDefault: boolean
   toolIds: string[]
 }
 
-function initialState(bot: BotRecord | null): FormState {
+function initialState(bot: BotRecord | null, providers: ProviderChoice[]): FormState {
   return {
     name: bot?.name ?? '',
-    provider: bot?.provider ?? 'openai',
-    model: bot?.model ?? 'gpt-4o-mini',
+    // A new bot lands on the only sensible default: the single provider that
+    // exists, or nothing to choose from at all.
+    providerId: bot?.providerId ?? (providers.length === 1 ? providers[0].id : ''),
     prompt: bot?.prompt ?? '',
-    // Always blank: the stored key is never sent to the browser, and blank
-    // means "keep whatever is stored".
-    apiKey: '',
     enabled: bot?.enabled ?? true,
     isDefault: bot?.isDefault ?? false,
     toolIds: bot?.toolIds ?? [],
@@ -99,10 +101,13 @@ function initialState(bot: BotRecord | null): FormState {
 export function BotForm({
   bot,
   tools,
+  providers,
   otherDefaultName,
 }: {
   bot: BotRecord | null
   tools: ToolChoice[]
+  /** The AI accounts this bot can answer through. */
+  providers: ProviderChoice[]
   /** The bot that currently holds the default, if it is not this one. */
   otherDefaultName: string | null
 }) {
@@ -110,16 +115,16 @@ export function BotForm({
   const { toast } = useToast()
   const isNew = bot === null
 
-  const [form, setForm] = useState<FormState>(() => initialState(bot))
+  const [form, setForm] = useState<FormState>(() => initialState(bot, providers))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [errors, setErrors] = useState<{ name?: string; prompt?: string }>({})
+  const [errors, setErrors] = useState<{ name?: string; prompt?: string; providerId?: string }>({})
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null)
   const [confirmLeave, setConfirmLeave] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  const baseline = useMemo(() => initialState(bot), [bot])
+  const baseline = useMemo(() => initialState(bot, providers), [bot, providers])
   const dirty = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(baseline),
     [form, baseline]
@@ -134,7 +139,9 @@ export function BotForm({
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
-    if (key === 'name' || key === 'prompt') setErrors((e) => ({ ...e, [key]: undefined }))
+    if (key === 'name' || key === 'prompt' || key === 'providerId') {
+      setErrors((e) => ({ ...e, [key]: undefined }))
+    }
   }
 
   function applyTemplate(text: string) {
@@ -152,6 +159,7 @@ export function BotForm({
     const nextErrors: typeof errors = {}
     if (!form.name.trim()) nextErrors.name = 'Give this bot a name so you can recognise it later.'
     if (!form.prompt.trim()) nextErrors.prompt = 'Instructions are required — this is what the AI answers with.'
+    if (!form.providerId) nextErrors.providerId = 'Choose the AI provider this bot answers through.'
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) {
       setSaveError('Check the highlighted fields and try again.')
@@ -199,6 +207,8 @@ export function BotForm({
       toast(errorMessage(err, 'The bot was not deleted.'), 'error')
     }
   }
+
+  const selected = providers.find((p) => p.id === form.providerId) ?? null
 
   const impact: string[] = []
   if (!form.enabled) impact.push('This bot will never be selected for an automatic reply while it is turned off.')
@@ -319,63 +329,64 @@ export function BotForm({
 
       <FormSection
         title="AI connection"
-        scope="Which model answers, and the key it uses. A key is required unless the server is configured with one."
+        scope="Which AI account answers. The vendor, the key and the model all come from that provider."
+        action={
+          <Button type="button" variant="ghost" size="sm" onClick={() => leaveTo('/ai-providers')}>
+            Manage providers
+          </Button>
+        }
       >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Select
-            label="Provider"
-            value={form.provider}
-            onChange={(e) => update('provider', e.target.value)}
-          >
-            <option value="openai">OpenAI</option>
-            <option value="gemini">Google Gemini</option>
-          </Select>
+        {providers.length === 0 ? (
+          <Banner tone="warning" title="No AI provider exists yet">
+            A bot cannot answer without one.{' '}
+            <button
+              type="button"
+              onClick={() => leaveTo('/ai-providers/new')}
+              className="cursor-pointer font-semibold underline underline-offset-2"
+            >
+              Add an AI provider
+            </button>{' '}
+            first — it holds the vendor, the API key and the model.
+          </Banner>
+        ) : (
+          <>
+            <Select
+              label="AI provider"
+              required
+              value={form.providerId}
+              error={errors.providerId}
+              onChange={(e) => update('providerId', e.target.value)}
+              hint="Every reply this bot sends is billed to the selected account, and its tokens are recorded against it."
+            >
+              <option value="" disabled>
+                Choose a provider…
+              </option>
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.name} — {providerLabel(provider.kind)} · {provider.model}
+                  {provider.enabled ? '' : ' (turned off)'}
+                </option>
+              ))}
+            </Select>
 
-          {/* A free-text field with suggestions. A fixed dropdown silently drops
-              a stored model the moment the provider ships a new one. */}
-          <Field
-            label="Model"
-            hint={`Type any model ID your ${PROVIDER_LABEL[form.provider] ?? 'provider'} account can use.`}
-          >
-            {({ id, describedBy }) => (
-              <>
-                <input
-                  id={id}
-                  aria-describedby={describedBy}
-                  list={`${id}-models`}
-                  value={form.model}
-                  onChange={(e) => update('model', e.target.value)}
-                  className="h-11 w-full rounded-md border border-[var(--input-border)]/70 bg-inset px-3
-                    text-base text-ink hover:border-[var(--input-border)] md:h-10 md:text-sm"
-                />
-                <datalist id={`${id}-models`}>
-                  {(MODEL_SUGGESTIONS[form.provider] ?? []).map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              </>
+            {selected && !selected.enabled && (
+              <Banner tone="warning" title="This provider is turned off">
+                Replies through “{selected.name}” fail until it is turned back on.
+              </Banner>
             )}
-          </Field>
-        </div>
-
-        <SecretField
-          label="API key"
-          stored={bot?.hasApiKey ?? false}
-          storedLabel="Stored"
-          emptyLabel="Using the server key"
-          value={form.apiKey}
-          onChange={(e) => update('apiKey', e.target.value)}
-          hint={
-            bot?.hasApiKey
-              ? 'A key is stored for this bot. Leave blank to keep it.'
-              : 'Optional. Without one, the bot falls back to the key configured on the server.'
-          }
-          placeholder={bot?.hasApiKey ? '••••••••' : 'sk-…'}
-        />
-        <p className="text-xs leading-4 text-ink-soft">
-          Saving a key stores it. It does not check that the key or model works — the first real
-          conversation does that.
-        </p>
+            {selected && !selected.hasApiKey && (
+              <Banner tone="info" title="No key stored on this provider">
+                “{selected.name}” uses the API key configured on the server. Replies fail if the
+                server has none.
+              </Banner>
+            )}
+            {!isNew && bot && !bot.providerId && (
+              <Banner tone="danger" title="This bot has no provider">
+                Its provider was deleted. Choose another one — until then, every reply fails.
+              </Banner>
+            )}
+          </>
+        )}
       </FormSection>
 
       <FormSection title="Availability" scope="When this bot is allowed to answer.">

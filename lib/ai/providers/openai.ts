@@ -1,17 +1,7 @@
 import OpenAI from 'openai'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
-import { aiKeys } from '@/lib/config'
-import type { ProviderRequest, ProviderResponse, ProviderTurn } from './types'
+import type { ModelChoice, ProviderRequest, ProviderResponse, ProviderTurn, TokenUsage } from './types'
 import type { ToolDefinition } from '@/lib/tools/types'
-import type { AIInput } from '../types'
-
-export function resolveApiKey(input: AIInput): string {
-  const apiKey = input.bot.apiKey || aiKeys.openai
-  if (!apiKey) {
-    throw new Error('No OpenAI API key configured (set OPENAI_API_KEY or store one on the bot)')
-  }
-  return apiKey
-}
 
 export async function generate(req: ProviderRequest): Promise<ProviderResponse> {
   const client = new OpenAI({ apiKey: req.apiKey })
@@ -25,9 +15,12 @@ export async function generate(req: ProviderRequest): Promise<ProviderResponse> 
   const choice = response.choices[0]?.message
   const calls = choice?.tool_calls ?? []
 
+  const usage = toUsage(response.usage)
+
   if (calls.length > 0) {
     return {
       kind: 'tool_calls',
+      usage,
       calls: calls.flatMap((call) =>
         call.type === 'function'
           ? [{ id: call.id, name: call.function.name, args: parseArgs(call.function.arguments) }]
@@ -36,7 +29,55 @@ export async function generate(req: ProviderRequest): Promise<ProviderResponse> 
     }
   }
 
-  return { kind: 'text', text: choice?.content?.trim() || '' }
+  return { kind: 'text', usage, text: choice?.content?.trim() || '' }
+}
+
+/**
+ * The models this key can reach, filtered to the ones worth offering.
+ *
+ * `/v1/models` returns the whole catalogue — embeddings, speech, images — and a
+ * dropdown of those would be a list of ways to break the bot. The filter is a
+ * denylist rather than an allowlist so a model released tomorrow still shows up.
+ */
+export async function listModels(apiKey: string): Promise<ModelChoice[]> {
+  const client = new OpenAI({ apiKey })
+  const page = await client.models.list()
+
+  return page.data
+    .map((model) => model.id)
+    .filter(isChatModel)
+    .sort((a, b) => a.localeCompare(b))
+    .map((id) => ({ id, label: id }))
+}
+
+const NON_CHAT = [
+  'embedding',
+  'whisper',
+  'tts',
+  'dall-e',
+  'moderation',
+  'audio',
+  'image',
+  'realtime',
+  'transcribe',
+  'search',
+  'sora',
+  'codex',
+  'babbage',
+  'davinci',
+]
+
+function isChatModel(id: string): boolean {
+  return !NON_CHAT.some((fragment) => id.includes(fragment))
+}
+
+function toUsage(usage: OpenAI.Completions.CompletionUsage | undefined): TokenUsage | undefined {
+  if (!usage) return undefined
+  return {
+    inputTokens: usage.prompt_tokens ?? 0,
+    outputTokens: usage.completion_tokens ?? 0,
+    totalTokens: usage.total_tokens ?? (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0),
+  }
 }
 
 function toTool(tool: ToolDefinition): ChatCompletionTool {

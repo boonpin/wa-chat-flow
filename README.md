@@ -242,6 +242,27 @@ against a live system. Schedule it from cron:
 
 ---
 
+# AI Provider Configuration
+
+An **AI provider** is the account your bots answer through. Add one under
+`AI providers` before creating a bot.
+
+| Field    | Description                                                              |
+| -------- | ------------------------------------------------------------------------ |
+| Name     | Your label for the account, e.g. "OpenAI — production"                    |
+| Vendor   | OpenAI / Google Gemini                                                    |
+| API Key  | Optional — falls back to `OPENAI_API_KEY` / `GEMINI_API_KEY`              |
+| Model    | Chosen from the models that key can actually reach                        |
+| Enabled  | A disabled provider makes every bot on it fail rather than fall back      |
+
+The model dropdown is filled by asking the vendor which models the key can use,
+so it cannot offer one your account does not have. A model id can still be typed
+by hand for anything released since.
+
+Several bots can share one provider. Every API call records its token usage
+against the provider that made it — visible on the provider's own page, split by
+bot and model, including calls that failed.
+
 # AI Bot Configuration
 
 Each AI Bot includes:
@@ -249,15 +270,13 @@ Each AI Bot includes:
 | Field        | Description                                                        |
 | ------------ | ------------------------------------------------------------------ |
 | Name         | Bot name                                                            |
-| Provider     | OpenAI / Gemini                                                     |
-| API Key      | Optional — falls back to `OPENAI_API_KEY` / `GEMINI_API_KEY`        |
-| Model        | Provider model id                                                   |
+| AI provider  | The account it answers through — vendor, key and model live there   |
 | Prompt       | System prompt; this is your business context                        |
 | Handler type | `direct` today; `external_agent` when the Agent Runtime lands       |
 | Enabled      | Disabled bots are never selected for auto replies                   |
 
-Stored API keys are never sent back to the browser. Editing a bot leaves the key
-field blank — submit it empty to keep the existing key.
+Stored API keys are never sent back to the browser. Editing a provider leaves
+the key field blank — submit it empty to keep the existing key.
 
 Example prompt:
 

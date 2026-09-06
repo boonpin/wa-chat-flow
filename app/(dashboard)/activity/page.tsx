@@ -28,10 +28,30 @@ import {
   fullTimestamp,
   request,
   timeAgo,
+  tokenCount,
   useAsyncData,
   type BadgeVariant,
 } from '@/components/ui'
 import { CaptureDetail, type Invocation } from '@/components/capture-detail'
+
+/** Tokens one reply cost. Null on every row that never called a model. */
+interface MessageUsage {
+  calls: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
+interface UsageCall {
+  id: string
+  round: number
+  model: string
+  inputTokens: number
+  outputTokens: number
+  latencyMs: number | null
+  status: string
+  error: string | null
+}
 
 interface EventRow {
   id: string
@@ -45,9 +65,12 @@ interface EventRow {
   contactId: string
   contactName: string | null
   contactPhone: string | null
+  usage: MessageUsage | null
 }
 
 interface EventDetail extends EventRow {
+  usage: (MessageUsage & { providerName: string | null }) | null
+  usageCalls: UsageCall[]
   conversationId: string
   provider: string
   providerMessageId: string | null
@@ -75,6 +98,28 @@ function describeEvent(row: EventRow): string {
   if (row.senderType === 'system') return row.error ?? 'System event'
   if (row.message) return row.message
   return row.messageType === 'text' ? 'No text content' : `${row.messageType} attachment`
+}
+
+/**
+ * Tokens for one row.
+ *
+ * A dash, not a zero, for everything that never called a model: a customer
+ * message, a human reply and a tool audit row all cost nothing because nothing
+ * was asked of the AI, and printing "0" would read as a model that answered for
+ * free. A reply that took several rounds says so, since that is where a
+ * surprising number usually comes from.
+ */
+function TokenCell({ usage }: { usage: MessageUsage | null }) {
+  if (!usage) return <span className="text-ink-soft">—</span>
+
+  return (
+    <span className="block text-xs tabular-nums text-ink">
+      {tokenCount(usage.inputTokens)} / {tokenCount(usage.outputTokens)}
+      {usage.calls > 1 && (
+        <span className="mt-0.5 block text-ink-soft">{usage.calls} calls</span>
+      )}
+    </span>
+  )
 }
 
 export default function ActivityPage() {
@@ -146,6 +191,9 @@ export default function ActivityPage() {
                     <Th className="w-24">From</Th>
                     <Th className="w-52">Customer</Th>
                     <Th>What happened</Th>
+                    <Th className="w-32" numeric>
+                      Tokens in / out
+                    </Th>
                     <Th className="w-28">Result</Th>
                   </tr>
                 </thead>
@@ -195,6 +243,9 @@ export default function ActivityPage() {
                                 </span>
                               )}
                           </button>
+                        </Td>
+                        <Td className="align-top" numeric>
+                          <TokenCell usage={row.usage} />
                         </Td>
                         <Td className="align-top">
                           <MessageStatusBadge status={row.status} />
@@ -286,6 +337,66 @@ function EventDrawer({
                   Nothing was captured. The AI called this tool before it had every required detail,
                   so it asked the customer for the rest instead. That is expected behaviour, not an
                   error.
+                </p>
+              )}
+            </section>
+          )}
+
+          {data.usage && (
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-ink">AI token usage</h3>
+              <KeyValues
+                rows={[
+                  ['Tokens in', tokenCount(data.usage.inputTokens)],
+                  ['Tokens out', tokenCount(data.usage.outputTokens)],
+                  ['Total', tokenCount(data.usage.totalTokens)],
+                  [
+                    'API calls',
+                    data.usageCalls.length === 1
+                      ? '1'
+                      : `${data.usageCalls.length} — the model used tools before answering`,
+                  ],
+                  ['Provider', data.usage.providerName ?? 'Deleted provider'],
+                ]}
+              />
+
+              {/* The rounds are only worth listing when there was more than
+                  one: that is when the total stops being self-explanatory. */}
+              {data.usageCalls.length > 1 && (
+                <div className="mt-3 overflow-hidden rounded-md border border-line">
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th className="w-20">Round</Th>
+                        <Th>Model</Th>
+                        <Th numeric>In</Th>
+                        <Th numeric>Out</Th>
+                        <Th numeric className="w-20">
+                          Took
+                        </Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.usageCalls.map((call) => (
+                        <tr key={call.id}>
+                          <Td>{call.round + 1}</Td>
+                          <Td className="font-mono text-xs">{call.model}</Td>
+                          <Td numeric>{tokenCount(call.inputTokens)}</Td>
+                          <Td numeric>{tokenCount(call.outputTokens)}</Td>
+                          <Td numeric>
+                            {call.latencyMs === null ? '—' : `${(call.latencyMs / 1000).toFixed(1)}s`}
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              )}
+
+              {data.usageCalls.some((call) => call.status === 'failed') && (
+                <p className="mt-2 text-xs leading-4 text-warning">
+                  One or more calls failed and were retried. Failed calls are counted here even
+                  though they returned no answer.
                 </p>
               )}
             </section>
