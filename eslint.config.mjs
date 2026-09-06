@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent tooling that lives beside the app but is not part of it. Linting
+    // someone else's vendored scripts with this project's rules only produces
+    // noise that hides real findings in app code.
+    ".agents/**",
+    ".claude/**",
   ]),
 ]);
 

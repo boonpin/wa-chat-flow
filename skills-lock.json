@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "frontend-design": {
+      "source": "vadimcomanescu/codex-skills",
+      "sourceType": "github",
+      "skillPath": "skills/.curated/design/frontend-design/SKILL.md",
+      "computedHash": "7c325bc6870fa936165d8ad8cd1bc21ed37ae57f6cd4b2641780f126d4926e4f"
+    },
+    "interface-design": {
+      "source": "dammyjay93/interface-design",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/interface-design/SKILL.md",
+      "computedHash": "340cc79a1558f09371aa3eb689952a8b777c1d7362c24226e99693606a80828e"
+    },
+    "ui-ux-design-pro": {
+      "source": "saifyxpro/ui-ux-design-pro-skill",
+      "sourceType": "github",
+      "skillPath": "skills/ui-ux-design-pro/SKILL.md",
+      "computedHash": "78db7907b61510b5d708d4b595a261fc198170bb4b21416ec67e1dd779e64890"
+    },
+    "ui-ux-pro-max": {
+      "source": "julianromli/opencode-template",
+      "sourceType": "github",
+      "skillPath": "skill/ui-ux-pro-max/SKILL.md",
+      "computedHash": "ee802b6aeb20af12333d37e1058ed846baaedb885ed6f1386f4d9e94958e6774"
+    },
+    "ux-writing": {
+      "source": "content-designer/ux-writing-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "7a9be24c109c69070451aaa30f75417825cb6b85435c775ad58185c52449cbfc"
+    }
+  }
+}

@@ -103,7 +103,8 @@ type, and whether it is required.
 
 ## 4. Assigning tools to a bot
 
-**Bots → (your bot) → Tools** — tick the ones it may use. A bot with nothing
+**AI bots → (your bot) → Tools** — tick the ones it may use. You can also
+attach a tool to a bot from the tool editor itself. A bot with nothing
 ticked behaves exactly as it did before tools existed.
 
 You will usually tick both capture tools on one bot and let the AI route between
@@ -124,16 +125,18 @@ Bot        Thanks Kelvin — our sales team will be in touch shortly.
 The AI asked for the email itself because `email` was marked required. Nothing
 in the bot prompt describes that exchange.
 
-Every tool run also leaves a line in the Inbox thread and the Logs page
-(`Ran tool: capture_sales_lead`) so an operator can see what happened. It is
-excluded from the AI's own memory of the conversation.
+Every tool run also leaves an event in the Inbox thread and on the **Activity**
+page so an operator can see what happened. In the thread it reads *"Details
+captured and synced to the sheet"*, or *"Details captured — sheet sync failed"*
+when the write did not land. It is excluded from the AI's own memory of the
+conversation.
 
 ### Inspecting a run
 
-On the **Logs** page, click any row to open its details. For a tool run that
+On the **Activity** page, click any row to open its details. For a tool run that
 shows:
 
-- **Submitted to sheet** — the exact columns that went over the wire, by their
+- **Details saved in WA Robot** — the exact columns that went over the wire, by their
   sheet header. If nothing was sent it says *"No submission — nothing was sent"*
   rather than showing you data that never left the app.
 - **What the AI passed** (collapsed) — the raw field keys before they were
@@ -150,7 +153,7 @@ A clean run shows *"None — this event completed cleanly."* under Error.
 
 Three outcomes are worth telling apart:
 
-| Log row | What it means |
+| Event | What it means |
 | :--- | :--- |
 | `sent`, no error | Captured and written to the sheet. |
 | `failed`, sink error | Captured here, sheet write failed. Retryable — nothing lost. |
@@ -161,8 +164,14 @@ Three outcomes are worth telling apart:
 
 ## 6. Captures and retries
 
-**Tools → Captures** lists every capture attempt, newest first. The Logs page
-shows the same failures in the context of the conversation they came from.
+**Tools → Captures** lists recent capture attempts, newest first. The Activity
+page shows the same events in the context of the conversation they came from,
+and the Inbox thread shows them inline.
+
+A capture detail always leads with what is safely stored, then says whether the
+sheet write happened. *Not submitted* means nothing ever left the app — fix the
+tool's sheet setup first. *Sync failed* means a request was sent and rejected —
+retry it.
 
 | Status | Meaning |
 | :--- | :--- |

@@ -2,173 +2,294 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { ToastProvider } from '@/components/ui'
+import { useState, type ReactNode } from 'react'
+import {
+  ActivityIcon,
+  BotIcon,
+  Button,
+  CampaignIcon,
+  ContactsIcon,
+  Drawer,
+  HelpIcon,
+  InboxIcon,
+  MenuIcon,
+  OverviewIcon,
+  ReplySettingsIcon,
+  SettingsIcon,
+  SignOutIcon,
+  ToastProvider,
+  ToolIcon,
+  WhatsAppIcon,
+  request,
+  useToast,
+} from '@/components/ui'
+import {
+  WorkspaceStatusProvider,
+  countConnected,
+  useWorkspaceStatus,
+} from '@/components/workspace-status'
 
-const NAV_ITEMS = [
+interface NavItem {
+  href: string
+  label: string
+  icon: ReactNode
+  /** Legacy routes that should still light this item up while they redirect. */
+  aliases?: string[]
+}
+
+/**
+ * Three daily destinations lead. Automation children are visible rather than
+ * hidden behind a parent page, because opening a bot should not cost an extra
+ * click. WhatsApp channels stays in reach: repairing a connection is urgent
+ * when it happens.
+ */
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    href: '/dashboard',
-    label: 'Overview',
-    icon: (
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
-      </svg>
-    ),
+    label: 'Work',
+    items: [
+      { href: '/dashboard', label: 'Overview', icon: <OverviewIcon /> },
+      { href: '/inbox', label: 'Inbox', icon: <InboxIcon /> },
+      { href: '/contacts', label: 'Contacts', icon: <ContactsIcon /> },
+    ],
   },
   {
-    href: '/wa',
+    label: 'Automation',
+    items: [
+      { href: '/bots', label: 'AI bots', icon: <BotIcon /> },
+      { href: '/tools', label: 'Tools', icon: <ToolIcon /> },
+      { href: '/automation/replies', label: 'Reply settings', icon: <ReplySettingsIcon /> },
+      { href: '/campaigns', label: 'Campaigns', icon: <CampaignIcon />, aliases: ['/blast'] },
+    ],
+  },
+  {
     label: 'WhatsApp',
-    icon: (
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-        <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
-      </svg>
-    ),
+    items: [
+      { href: '/channels/whatsapp', label: 'WhatsApp channels', icon: <WhatsAppIcon />, aliases: ['/wa'] },
+    ],
   },
   {
-    href: '/inbox',
-    label: 'Inbox',
-    icon: (
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-        <path d="M22 12h-6l-2 3h-4l-2-3H2" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
-  {
-    href: '/bots',
-    label: 'Bots',
-    icon: (
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-        <rect x="3" y="11" width="18" height="10" rx="2" />
-        <path d="M12 11V7M9 7h6M9 15h.01M15 15h.01" />
-        <circle cx="9" cy="15" r="0.5" fill="currentColor" />
-        <circle cx="15" cy="15" r="0.5" fill="currentColor" />
-      </svg>
-    ),
-  },
-  {
-    href: '/tools',
-    label: 'Tools',
-    icon: (
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-        <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
-  {
-    href: '/blast',
-    label: 'Blast',
-    icon: (
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
-  {
-    href: '/contacts',
-    label: 'Contacts',
-    icon: (
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
-      </svg>
-    ),
-  },
-  {
-    href: '/logs',
-    label: 'Logs',
-    icon: (
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-        <path d="M4 6h16M4 10h16M4 14h10M4 18h7" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    href: '/settings',
-    label: 'Settings',
-    icon: (
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-      </svg>
-    ),
+    label: 'Utility',
+    items: [
+      { href: '/activity', label: 'Activity', icon: <ActivityIcon />, aliases: ['/logs'] },
+      { href: '/settings', label: 'Settings', icon: <SettingsIcon /> },
+      { href: '/help', label: 'Help', icon: <HelpIcon /> },
+    ],
   },
 ]
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  const router = useRouter()
+const ALL_ITEMS = NAV_GROUPS.flatMap((g) => g.items)
 
-  async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
+function isActive(item: NavItem, pathname: string): boolean {
+  const paths = [item.href, ...(item.aliases ?? [])]
+  return paths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+}
+
+function currentLabel(pathname: string): string {
+  // Longest match wins, so /automation/replies does not resolve to /automation.
+  const match = [...ALL_ITEMS]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((item) => isActive(item, pathname))
+  return match?.label ?? 'WA Robot'
+}
+
+function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  return (
+    <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.label} className="mb-4 last:mb-0">
+          <p className="px-3 pb-1.5 text-xs font-medium text-ink-soft">{group.label}</p>
+          <ul className="space-y-0.5">
+            {group.items.map((item) => {
+              const active = isActive(item, pathname)
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    onClick={onNavigate}
+                    aria-current={active ? 'page' : undefined}
+                    className={`flex h-11 items-center gap-2.5 rounded-md px-3 text-sm
+                      transition-colors duration-[--duration-control] md:h-10 ${
+                        active
+                          ? 'bg-selected font-semibold text-ink'
+                          : 'font-medium text-ink-muted hover:bg-hover hover:text-ink'
+                      }`}
+                  >
+                    <span className={active ? 'text-action' : 'text-ink-soft'}>{item.icon}</span>
+                    <span className="truncate">{item.label}</span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  )
+}
+
+/**
+ * A summary that links to repair — never a master switch. One connected number
+ * does not mean every number is fine, so the count is explicit.
+ */
+function ConnectionSummary() {
+  const { status, loading, error } = useWorkspaceStatus()
+
+  if (loading) {
+    return <div className="anim-pulse mx-3 h-14 rounded-md bg-inset" aria-hidden="true" />
+  }
+
+  if (error || !status) {
+    return (
+      <Link
+        href="/channels/whatsapp"
+        className="mx-3 block rounded-md border border-line px-3 py-2.5 text-xs text-ink-muted hover:bg-hover"
+      >
+        <span className="font-medium text-warning">Status unavailable.</span> Open WhatsApp channels
+      </Link>
+    )
+  }
+
+  const total = status.channels.length
+  const connected = countConnected(status.channels)
+  const aiOn = status.settings.autoReplyEnabled
+  const needsAttention = total === 0 || connected < total
+
+  return (
+    <Link
+      href={needsAttention ? '/channels/whatsapp' : '/automation/replies'}
+      className="mx-3 block rounded-md border border-line bg-panel px-3 py-2.5 transition-colors hover:bg-hover"
+    >
+      <span className="flex items-center gap-1.5 text-xs font-medium text-ink">
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+            connected > 0 ? 'bg-success' : 'bg-warning'
+          }`}
+          aria-hidden="true"
+        />
+        {total === 0
+          ? 'No numbers connected'
+          : `${connected} of ${total} numbers reported connected`}
+      </span>
+      <span className="mt-1 block text-xs text-ink-soft">
+        AI replies {aiOn ? 'enabled' : 'paused'}
+      </span>
+    </Link>
+  )
+}
+
+function SignOutButton() {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [pending, setPending] = useState(false)
+
+  async function signOut() {
+    setPending(true)
+    try {
+      await request('/api/auth/logout', { method: 'POST' })
+      router.push('/login')
+    } catch {
+      setPending(false)
+      toast('Could not sign out. Try again.', 'error')
+    }
   }
 
   return (
-    <ToastProvider>
-      <div className="min-h-screen bg-[#F6F8FB] flex">
-        {/* Sidebar */}
-        <aside className="w-56 bg-white border-r border-[#E6EAF0] flex flex-col shrink-0 fixed top-0 left-0 h-full z-20">
-          {/* Logo */}
-          <div className="px-5 py-5 border-b border-[#E6EAF0]">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-[#16A34A] flex items-center justify-center shrink-0">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
-                  <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
-                </svg>
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-[#0F172A] leading-tight">WA Robot</div>
-                <div className="text-[10px] text-[#94A3B8] leading-tight mt-0.5">AI Auto Reply</div>
-              </div>
+    <Button variant="ghost" size="sm" onClick={signOut} pending={pending} pendingLabel="Signing out…" className="w-full justify-start">
+      <SignOutIcon size={15} />
+      Sign out
+    </Button>
+  )
+}
+
+function Brand() {
+  return (
+    <Link href="/dashboard" className="flex items-center gap-2.5 rounded-md">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-action">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
+        </svg>
+      </span>
+      <span className="text-sm font-semibold text-ink">WA Robot</span>
+    </Link>
+  )
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
+  // The drawer records which route it was opened on, so navigating anywhere
+  // closes it by definition — no effect, and no chance of it being left over
+  // the page after a route change.
+  const [openedAt, setOpenedAt] = useState<string | null>(null)
+  const navOpen = openedAt === pathname
+  const setNavOpen = (next: boolean) => setOpenedAt(next ? pathname : null)
+
+  return (
+    <div className="min-h-dvh">
+      <a
+        href="#main"
+        className="sr-only rounded-md bg-action px-4 py-2 text-sm font-semibold text-on-action
+          focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[60]"
+      >
+        Skip to content
+      </a>
+
+      {/* Desktop navigation: same canvas as the page, separated by one quiet line. */}
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-[var(--nav-width)] flex-col border-r border-line bg-canvas md:flex">
+        <div className="px-5 py-4">
+          <Brand />
+        </div>
+        <NavLinks pathname={pathname} />
+        <div className="space-y-2 border-t border-line py-3">
+          <ConnectionSummary />
+          <div className="px-3">
+            <SignOutButton />
+          </div>
+        </div>
+      </aside>
+
+      {/* Phone and small tablet: a header that keeps the full content width. */}
+      <header className="sticky top-0 z-20 flex h-[var(--topbar-height)] items-center gap-2 border-b border-line bg-canvas/95 px-3 backdrop-blur md:hidden">
+        <Button variant="ghost" size="sm" onClick={() => setNavOpen(true)} aria-expanded={navOpen}>
+          <MenuIcon size={18} />
+          <span className="sr-only">Open navigation</span>
+        </Button>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+          {currentLabel(pathname)}
+        </span>
+        <Brand />
+      </header>
+
+      <Drawer
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        side="left"
+        width="nav"
+        title="Navigation"
+      >
+        <div className="-m-4 flex h-full flex-col md:-m-5">
+          <NavLinks pathname={pathname} onNavigate={() => setNavOpen(false)} />
+          <div className="space-y-2 border-t border-line py-3">
+            <ConnectionSummary />
+            <div className="px-3">
+              <SignOutButton />
             </div>
           </div>
+        </div>
+      </Drawer>
 
-          {/* Nav */}
-          <nav className="flex-1 px-3 py-4 space-y-0.5">
-            {NAV_ITEMS.map((item) => {
-              const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'))
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                    active
-                      ? 'bg-[#F0FDF4] text-[#16A34A] font-medium'
-                      : 'text-[#475569] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
-                  }`}
-                >
-                  <span className={active ? 'text-[#16A34A]' : 'text-[#94A3B8]'}>{item.icon}</span>
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
+      <main id="main" className="min-w-0 md:pl-[var(--nav-width)]">
+        {children}
+      </main>
+    </div>
+  )
+}
 
-          {/* Logout */}
-          <div className="px-3 pb-4 border-t border-[#E6EAF0] pt-3">
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#475569] hover:bg-[#F8FAFC] hover:text-[#0F172A] transition-all"
-            >
-              <span className="text-[#94A3B8]">
-                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
-                </svg>
-              </span>
-              Sign Out
-            </button>
-          </div>
-        </aside>
-
-        {/* Main */}
-        <main className="flex-1 ml-56 min-h-screen">
-          {children}
-        </main>
-      </div>
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  return (
+    <ToastProvider>
+      <WorkspaceStatusProvider>
+        <Shell>{children}</Shell>
+      </WorkspaceStatusProvider>
     </ToastProvider>
   )
 }

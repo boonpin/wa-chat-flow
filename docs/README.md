@@ -12,7 +12,7 @@ This user guide is split by module for easier reading.
 6. [Bots Management](./05-bots-management.md)
 7. [Tools & Sheet Capture](./11-tools-and-capture.md)
 8. [Contacts Management](./06-contacts-management.md)
-9. [Automation Settings](./07-automation-settings.md)
+9. [Reply Settings](./07-automation-settings.md)
 10. [End-to-End Workflow](./08-end-to-end-workflow.md)
 11. [System Design](./SYSTEM_DESIGN.md)
 12. [Troubleshooting](./09-troubleshooting.md)

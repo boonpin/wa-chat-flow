@@ -121,10 +121,14 @@ The thread displays the reason on the failed bubble. Common causes:
 - *"WhatsApp session is not running"* — reconnect the number.
 - *"gateway rejected the request"* — `WAHA_API_KEY` mismatch.
 
-## Blast Campaign Paused Itself
+## A Campaign Paused Itself
 
-A campaign pauses automatically when the session is not connected, or after 5
-consecutive send failures. Reconnect the number, then **Resume**.
+A campaign pauses automatically when the number is not connected, or after 5
+consecutive send failures. Open **Campaigns**, reconnect the number from
+**WhatsApp channels**, then choose **Resume**.
+
+Pausing AI replies does not pause a campaign, and a campaign does not need a
+bot — the two are independent.
 
 ## No Contacts Showing
 

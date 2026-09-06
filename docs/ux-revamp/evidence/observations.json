@@ -1,0 +1,352 @@
+[
+  {
+    "scenario": "populated",
+    "route": "login",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 2,
+    "heading": "WA Robot"
+  },
+  {
+    "scenario": "populated",
+    "route": "dashboard",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 0,
+    "heading": "Overview"
+  },
+  {
+    "scenario": "populated",
+    "route": "inbox",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 4,
+    "heading": "Inbox"
+  },
+  {
+    "scenario": "populated",
+    "route": "bots",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 7,
+    "heading": "Bots"
+  },
+  {
+    "scenario": "populated",
+    "route": "tools",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 12,
+    "heading": "Tools"
+  },
+  {
+    "scenario": "populated",
+    "route": "contacts",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 8,
+    "heading": "Contacts"
+  },
+  {
+    "scenario": "populated",
+    "route": "blast",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 0,
+    "heading": "Campaign Blast"
+  },
+  {
+    "scenario": "populated",
+    "route": "blast/create",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 5,
+    "heading": "New Campaign"
+  },
+  {
+    "scenario": "populated",
+    "route": "blast/campaign-a",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 0,
+    "heading": "September service update"
+  },
+  {
+    "scenario": "populated",
+    "route": "wa",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 0,
+    "heading": "WhatsApp Numbers"
+  },
+  {
+    "scenario": "populated",
+    "route": "settings",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 2,
+    "heading": "Automation Settings"
+  },
+  {
+    "scenario": "populated",
+    "route": "logs",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "unlabelledControls": 1,
+    "heading": "Message Logs"
+  },
+  {
+    "scenario": "populated",
+    "route": "login",
+    "width": 390,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "unlabelledControls": 2,
+    "heading": "WA Robot"
+  },
+  {
+    "scenario": "populated",
+    "route": "dashboard",
+    "width": 390,
+    "scrollWidth": 514,
+    "clientWidth": 390,
+    "unlabelledControls": 0,
+    "heading": "Overview"
+  },
+  {
+    "scenario": "populated",
+    "route": "inbox",
+    "width": 390,
+    "scrollWidth": 930,
+    "clientWidth": 390,
+    "unlabelledControls": 4,
+    "heading": "Inbox"
+  },
+  {
+    "scenario": "populated",
+    "route": "bots",
+    "width": 390,
+    "scrollWidth": 434,
+    "clientWidth": 390,
+    "unlabelledControls": 7,
+    "heading": "Bots"
+  },
+  {
+    "scenario": "populated",
+    "route": "tools",
+    "width": 390,
+    "scrollWidth": 593,
+    "clientWidth": 390,
+    "unlabelledControls": 12,
+    "heading": "Tools"
+  },
+  {
+    "scenario": "populated",
+    "route": "contacts",
+    "width": 390,
+    "scrollWidth": 1004,
+    "clientWidth": 390,
+    "unlabelledControls": 8,
+    "heading": "Contacts"
+  },
+  {
+    "scenario": "populated",
+    "route": "blast",
+    "width": 390,
+    "scrollWidth": 1127,
+    "clientWidth": 390,
+    "unlabelledControls": 0,
+    "heading": "Campaign Blast"
+  },
+  {
+    "scenario": "populated",
+    "route": "blast/create",
+    "width": 390,
+    "scrollWidth": 635,
+    "clientWidth": 390,
+    "unlabelledControls": 5,
+    "heading": "New Campaign"
+  },
+  {
+    "scenario": "populated",
+    "route": "blast/campaign-a",
+    "width": 390,
+    "scrollWidth": 902,
+    "clientWidth": 390,
+    "unlabelledControls": 0,
+    "heading": "September service update"
+  },
+  {
+    "scenario": "populated",
+    "route": "wa",
+    "width": 390,
+    "scrollWidth": 506,
+    "clientWidth": 390,
+    "unlabelledControls": 0,
+    "heading": "WhatsApp Numbers"
+  },
+  {
+    "scenario": "populated",
+    "route": "settings",
+    "width": 390,
+    "scrollWidth": 504,
+    "clientWidth": 390,
+    "unlabelledControls": 2,
+    "heading": "Automation Settings"
+  },
+  {
+    "scenario": "populated",
+    "route": "logs",
+    "width": 390,
+    "scrollWidth": 837,
+    "clientWidth": 390,
+    "unlabelledControls": 1,
+    "heading": "Message Logs"
+  },
+  {
+    "check": "successful-tool-rendered-as-error",
+    "observed": true
+  },
+  {
+    "check": "resolve-removes-thread-and-draft",
+    "observed": true
+  },
+  {
+    "check": "contacts-text-hidden",
+    "observed": true
+  },
+  {
+    "check": "contact-drawer-dialog-role",
+    "count": 0
+  },
+  {
+    "check": "contact-drawer-remains-after-escape",
+    "observed": true
+  },
+  {
+    "scenario": "empty",
+    "route": "dashboard",
+    "visibleText": "Overview\n\nSystem health and key metrics at a glance\n\nWhatsApp\nOffline\nAuto Reply\nOFF\nDefault Bot\nNot set\n\nTOTAL CONTACTS\n\n0\n\nWhatsApp contacts\n\nAI BOTS\n\n0\n\nConfigured bots\n\nWHATSAPP\n\nOffline\nAdd a number →\n\nNeeds attention\n\nNo WhatsApp numbers added\nFix →\nAuto Reply is disabled\nFix →\nNo AI bots configured\nFix →"
+  },
+  {
+    "scenario": "empty",
+    "route": "inbox",
+    "visibleText": "Inbox\n\nEvery conversation, whether the AI or a human is handling it\n\nOpen\nResolved\nAll\n\nNo open conversations.\n\n💬\n\nNo conversation selected\n\nPick a conversation on the left to read it and reply."
+  },
+  {
+    "scenario": "empty",
+    "route": "bots",
+    "visibleText": "Bots\n\nConfigure AI bots to handle auto replies\n\nNew Bot\n🤖\n\nNo bots yet\n\nCreate your first AI bot to start auto-replying\n\nCreate bot"
+  },
+  {
+    "scenario": "empty",
+    "route": "tools",
+    "visibleText": "Tools\n\nLet a bot collect details mid-conversation and write them to a Google Sheet.\n\n+ Sales lead\n+ Support ticket\n+ Blank\nTools (0)\nCaptures (0)\nNo tools yet. Start from a template above — a Sales lead or Support ticket capture is ready to go once you paste in an Apps Script URL."
+  },
+  {
+    "scenario": "empty",
+    "route": "contacts",
+    "visibleText": "Contacts\n\n0 contacts — appear automatically when messages are received\n\nAll\nAI ON\nAI OFF\n👥\n\nNo contacts yet\n\nContacts appear automatically when WhatsApp messages are received"
+  },
+  {
+    "scenario": "empty",
+    "route": "wa",
+    "visibleText": "WhatsApp Numbers\n\nConnect and manage multiple WhatsApp accounts\n\n+ Add Number\n\nNo WhatsApp numbers added yet.\n\nClick + Add Number to get started."
+  },
+  {
+    "scenario": "empty",
+    "route": "settings",
+    "visibleText": "Automation Settings\n\nControl how auto-replies work across the system\n\nAuto Reply\n\nGlobally enable or disable AI-powered auto replies for all contacts\n\nEnable Auto Reply\n\nAI is paused — no replies will be sent\n\nPaused\n\nAuto reply is disabled. Incoming messages will not receive AI responses, even if individual contacts have AI enabled.\n\nDefault Bot\n\nThe fallback bot used when a contact has no specific bot assigned\n\nDefault Bot\n\nContacts without a specific bot assignment will use this bot\n\nNone — AI won't reply without a bot assigned\n\nNo default bot set. Contacts without a specific bot assigned will not receive AI replies.\n\nHow Auto Reply Works\n\nUnderstanding the reply decision logic\n\n1\n\nSystem auto reply\n\nMust be ON (controlled here)\n\n2\n\nContact AI enabled\n\nPer-contact setting in Contacts page\n\n3\n\nBot selection\n\nContact's assigned bot → Default bot\n\n4\n\nAI generates reply\n\nUsing the bot's system prompt"
+  },
+  {
+    "scenario": "empty",
+    "route": "logs",
+    "visibleText": "Message Logs\n\nEverything sent and received. Click a row for details. Page 1 auto-refreshes every 5s.\n\nRefresh\nTime\tFrom\tContact\tMessage\tStatus\nNo messages yet.\n\nNo entries\n\n25 per page\n50 per page\n100 per page\nPrevious\n1 / 1\nNext"
+  },
+  {
+    "scenario": "empty",
+    "route": "blast",
+    "visibleText": "Campaign Blast\n\nSend bulk messages to your contacts\n\nNew Campaign\n📢\n\nNo campaigns yet\n\nCreate your first blast campaign to send messages to multiple contacts.\n\nNew Campaign"
+  },
+  {
+    "scenario": "failure",
+    "route": "dashboard",
+    "visibleText": "Overview\n\nSystem health and key metrics at a glance\n\nWhatsApp\nOffline\nAuto Reply\nOFF\nDefault Bot\nNot set\n\nTOTAL CONTACTS\n\n0\n\nWhatsApp contacts\n\nAI BOTS\n\n0\n\nConfigured bots\n\nWHATSAPP\n\nOffline\nAdd a number →\n\nNeeds attention\n\nNo WhatsApp numbers added\nFix →\nAuto Reply is disabled\nFix →\nNo AI bots configured\nFix →"
+  },
+  {
+    "scenario": "failure",
+    "route": "inbox",
+    "visibleText": "Inbox\n\nEvery conversation, whether the AI or a human is handling it\n\nOpen\nResolved\nAll\n\nNo open conversations.\n\n💬\n\nNo conversation selected\n\nPick a conversation on the left to read it and reply."
+  },
+  {
+    "scenario": "failure",
+    "pageError": "bots.map is not a function",
+    "url": "http://127.0.0.1:3100/bots"
+  },
+  {
+    "scenario": "failure",
+    "route": "bots",
+    "visibleText": "Application error: a client-side exception has occurred while loading 127.0.0.1 (see the browser console for more information)."
+  },
+  {
+    "scenario": "failure",
+    "route": "tools",
+    "visibleText": "Tools\n\nLet a bot collect details mid-conversation and write them to a Google Sheet.\n\n+ Sales lead\n+ Support ticket\n+ Blank\nTools (0)\nCaptures (0)\nNo tools yet. Start from a template above — a Sales lead or Support ticket capture is ready to go once you paste in an Apps Script URL."
+  },
+  {
+    "scenario": "failure",
+    "pageError": "contacts is not iterable",
+    "url": "http://127.0.0.1:3100/contacts"
+  },
+  {
+    "scenario": "failure",
+    "route": "contacts",
+    "visibleText": "Application error: a client-side exception has occurred while loading 127.0.0.1 (see the browser console for more information)."
+  },
+  {
+    "scenario": "failure",
+    "route": "wa",
+    "visibleText": "WhatsApp Numbers\n\nConnect and manage multiple WhatsApp accounts\n\n+ Add Number\n\nNo WhatsApp numbers added yet.\n\nClick + Add Number to get started."
+  },
+  {
+    "scenario": "failure",
+    "pageError": "bots.find is not a function",
+    "url": "http://127.0.0.1:3100/settings"
+  },
+  {
+    "scenario": "failure",
+    "route": "settings",
+    "visibleText": "Application error: a client-side exception has occurred while loading 127.0.0.1 (see the browser console for more information)."
+  },
+  {
+    "scenario": "failure",
+    "route": "logs",
+    "visibleText": "Message Logs\n\nEverything sent and received. Click a row for details. Page 1 auto-refreshes every 5s.\n\nRefresh\nTime\tFrom\tContact\tMessage\tStatus\nNo messages yet.\n\nNo entries\n\n25 per page\n50 per page\n100 per page\nPrevious\n1 / 1\nNext"
+  },
+  {
+    "scenario": "failure",
+    "route": "blast",
+    "visibleText": "Campaign Blast\n\nSend bulk messages to your contacts\n\nNew Campaign\n📢\n\nNo campaigns yet\n\nCreate your first blast campaign to send messages to multiple contacts.\n\nNew Campaign"
+  },
+  {
+    "scenario": "offline-login",
+    "pageError": "Failed to fetch",
+    "url": "http://127.0.0.1:3100/login"
+  },
+  {
+    "check": "offline-login-stuck",
+    "observed": true
+  }
+]

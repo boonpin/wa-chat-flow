@@ -11,14 +11,30 @@ alongside the app. It must be running before you can connect a number.
 
 ## Main Modules
 
-- `Overview`: health and quick status
-- `WhatsApp`: connect/disconnect WhatsApp numbers
-- `Inbox`: read every conversation, reply manually, toggle AI per thread
-- `Bots`: create and manage AI bots
-- `Blast`: send a templated message to many recipients
-- `Contacts`: control per-contact AI behavior
-- `Logs`: raw feed of everything sent and received
-- `Settings`: global auto-reply and default bot
+Navigation is grouped by how often you need it.
+
+**Work** — the daily destinations:
+
+- `Overview`: what needs attention, and what the AI will do next
+- `Inbox`: read every conversation, reply, and choose who answers each one
+- `Contacts`: per-customer reply mode and default bot
+
+**Automation** — how replies are produced:
+
+- `AI bots`: the instructions the AI answers with, and the tools it may use
+- `Tools`: collect customer details mid-conversation into a Google Sheet
+- `Reply settings`: whether the AI may answer at all, and the default bot
+- `Campaigns`: send one deliberate message to a group of customers
+
+**WhatsApp**
+
+- `WhatsApp channels`: connect, repair and remove the numbers your business uses
+
+**Utility**
+
+- `Activity`: everything sent, received and captured, with per-event detail
+- `Settings`: where each piece of configuration lives, plus access help
+- `Help`: short guides for the tasks people actually do
 
 ## Access URL
 

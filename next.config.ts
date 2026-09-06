@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
   outputFileTracingExcludes: {
     '*': ['storage/**', 'data/**', 'waha/**', 'docs/**', '.wwebjs_cache/**'],
   },
+  // The Google Sheets guide reads this script from disk rather than duplicating
+  // it, so the standalone build has to carry the file.
+  outputFileTracingIncludes: {
+    '/help/google-sheets': ['scripts/apps-script/capture.gs'],
+  },
 }
 
 export default nextConfig

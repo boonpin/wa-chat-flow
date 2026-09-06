@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="1120" viewBox="0 0 1320 1120" role="img" aria-labelledby="title desc">
+  <title id="title">WA Robot proposed visual direction</title>
+  <desc id="desc">A light operational workspace with grouped navigation, conversation list and reply status separating WhatsApp connection, AI mode and globally paused AI replies. Below are palette and component specimens. All conversation content is illustrative. This is a static proposal, not implemented UI.</desc>
+  <defs>
+    <style>
+      text{font-family:"Source Sans 3",Arial,sans-serif;fill:#182C23;font-size:14px}
+      .secondary{fill:#43564C}.meta{fill:#64716B;font-size:12px}.label{font-size:12px;font-weight:600;fill:#64716B}.strong{font-weight:600}.title{font-size:28px;font-weight:600;letter-spacing:-.5px}.white{fill:#FFF}.small{font-size:12px}.green{fill:#087F5B}.blue{fill:#1D4ED8}
+    </style>
+    <filter id="lift" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="4" stdDeviation="10" flood-color="#182C23" flood-opacity=".07"/></filter>
+  </defs>
+  <rect width="1320" height="1120" fill="#F8FAF9"/>
+  <text x="40" y="53" class="title">A clear view of every customer conversation.</text>
+  <text x="40" y="82" class="secondary">WA Robot · Phase 1 direction specimen · Illustrative content, not an implemented screen</text>
+  <rect x="40" y="120" width="1240" height="680" rx="12" fill="#FFF" stroke="#DDE4DF" filter="url(#lift)"/>
+  <path d="M52 120H272V800H52Q40 800 40 788V132Q40 120 52 120" fill="#F8FAF9"/>
+  <path d="M272 120V800" stroke="#DDE4DF"/>
+  <rect x="60" y="144" width="28" height="28" rx="8" fill="#087F5B"/>
+  <path d="M67 151H81V161H73L69 165V161H67Z" fill="none" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+  <text x="100" y="163" class="strong">WA Robot</text>
+  <text x="60" y="207" class="label">Work</text>
+  <text x="76" y="238" class="secondary">Overview</text>
+  <rect x="52" y="250" width="208" height="40" rx="8" fill="#E4F2EA"/>
+  <rect x="52" y="262" width="3" height="16" rx="1.5" fill="#087F5B"/>
+  <text x="76" y="275" class="strong">Inbox</text>
+  <text x="76" y="318" class="secondary">Contacts</text>
+  <text x="60" y="366" class="label">Automation</text>
+  <text x="76" y="398" class="secondary">AI bots</text>
+  <text x="76" y="438" class="secondary">Tools</text>
+  <text x="76" y="478" class="secondary">Reply settings</text>
+  <text x="76" y="518" class="secondary">Campaigns</text>
+  <text x="60" y="566" class="label">WhatsApp</text>
+  <text x="76" y="600" class="secondary">WhatsApp channels</text>
+  <path d="M60 625H252" stroke="#DDE4DF"/>
+  <text x="76" y="658" class="secondary">Activity</text>
+  <text x="76" y="698" class="secondary">Settings</text>
+  <text x="76" y="738" class="secondary">Help</text>
+  <text x="60" y="778" class="meta">Account / Sign out</text>
+  <text x="296" y="159" style="font-size:28px" class="strong">Inbox</text>
+  <text x="296" y="187" class="secondary">Read the conversation. See who will reply.</text>
+  <rect x="1020" y="143" width="236" height="32" rx="8" fill="#FFFBEB"/>
+  <text x="1032" y="164" style="fill:#92400E;font-size:12px">WhatsApp · Needs attention</text>
+  <path d="M272 212H1280" stroke="#DDE4DF"/>
+  <path d="M560 212V800" stroke="#DDE4DF"/>
+  <text x="292" y="247" class="strong">Open conversations</text>
+  <rect x="288" y="264" width="256" height="40" rx="8" fill="#F3F6F4" stroke="#7E8D85"/>
+  <circle cx="306" cy="282" r="5" fill="none" stroke="#64716B" stroke-width="1.5"/>
+  <path d="M310 286L314 290" stroke="#64716B" stroke-width="1.5"/>
+  <text x="324" y="289" class="meta">Search name or number</text>
+  <text x="292" y="330" class="secondary">Reply mode: All</text>
+  <text x="470" y="330" class="green small">Filters</text>
+  <rect x="280" y="350" width="272" height="96" rx="8" fill="#E4F2EA"/>
+  <text x="296" y="376" class="strong">Sample customer</text>
+  <text x="500" y="376" class="meta">09:24</text>
+  <text x="296" y="400" class="secondary">Could someone help me choose?</text>
+  <rect x="296" y="413" width="32" height="22" rx="6" fill="#EFF6FF"/>
+  <text x="305" y="428" class="blue small strong">AI</text>
+  <text x="338" y="429" class="meta">Sales · Replies paused</text>
+  <text x="296" y="482" class="strong">Example customer</text>
+  <text x="500" y="482" class="meta">09:18</text>
+  <text x="296" y="506" class="secondary">Thank you for the update.</text>
+  <rect x="296" y="519" width="63" height="22" rx="6" fill="#F1F5F9"/>
+  <text x="305" y="534" class="small secondary">Human</text>
+  <text x="370" y="535" class="meta">Support</text>
+  <path d="M292 558H536" stroke="#E8EDE9"/>
+  <text x="292" y="780" class="meta">Recent conversations</text>
+  <text x="584" y="247" style="font-size:20px" class="strong">Sample customer</text>
+  <text x="584" y="270" class="meta">Sales · Reported connected</text>
+  <rect x="1168" y="232" width="88" height="40" rx="8" fill="#087F5B"/>
+  <text x="1188" y="257" class="white strong">Resolve</text>
+  <rect x="584" y="285" width="106" height="24" rx="6" fill="#EFF6FF"/>
+  <text x="594" y="301" class="blue small strong">Reply mode: AI</text>
+  <text x="704" y="302" class="secondary">Bot: Sales assistant</text>
+  <text x="1109" y="302" class="green small">Use human replies</text>
+  <rect x="584" y="328" width="672" height="76" rx="8" fill="#FFFBEB"/>
+  <text x="600" y="352" style="fill:#92400E;font-weight:600">AI replies are paused globally.</text>
+  <text x="600" y="376" style="fill:#92400E">You can still receive messages and reply manually.</text>
+  <text x="1104" y="389" style="fill:#92400E;font-size:12px;text-decoration:underline">Review reply settings</text>
+  <text x="898" y="433" class="meta">Today</text>
+  <rect x="584" y="454" width="376" height="72" rx="12" fill="#F3F6F4"/>
+  <text x="600" y="480" style="font-size:16px">Could someone help me choose a service?</text>
+  <text x="916" y="510" class="meta">09:24</text>
+  <path d="M788 583L792 587L800 577" fill="none" stroke="#166534" stroke-width="1.7"/>
+  <text x="810" y="587" class="meta">Customer details saved here</text>
+  <text x="1115" y="587" class="green small">View capture</text>
+  <path d="M560 652H1280" stroke="#DDE4DF"/>
+  <text x="584" y="680" class="strong">Reply as a human</text>
+  <rect x="584" y="694" width="672" height="88" rx="8" fill="#F3F6F4" stroke="#7E8D85"/>
+  <text x="600" y="721" style="font-size:16px">Of course. What would you like to use it for?</text>
+  <text x="600" y="761" class="meta">Enter to send · Shift+Enter for a new line</text>
+  <rect x="1160" y="730" width="80" height="40" rx="8" fill="#087F5B"/>
+  <text x="1184" y="755" class="white strong">Send</text>
+  <text x="40" y="852" style="font-size:20px" class="strong">One shared visual language</text>
+  <rect x="40" y="876" width="288" height="172" rx="12" fill="#FFF" stroke="#DDE4DF"/>
+  <text x="56" y="904" class="strong">Readable, restrained color</text>
+  <rect x="56" y="922" width="44" height="32" rx="6" fill="#182C23"/>
+  <rect x="108" y="922" width="44" height="32" rx="6" fill="#087F5B"/>
+  <rect x="160" y="922" width="44" height="32" rx="6" fill="#1D4ED8"/>
+  <rect x="212" y="922" width="44" height="32" rx="6" fill="#92400E"/>
+  <text x="56" y="980" class="secondary">Dark ink · Green action · Blue AI</text>
+  <text x="56" y="1005" class="meta">Primary button text contrast 5.00:1</text>
+  <text x="56" y="1028" class="meta">Color always paired with words</text>
+  <rect x="344" y="876" width="288" height="172" rx="12" fill="#FFF" stroke="#DDE4DF"/>
+  <text x="360" y="904" class="strong">A clear reading order</text>
+  <text x="360" y="946" style="font-size:28px" class="strong">Customer first</text>
+  <text x="360" y="976" style="font-size:16px">Comfortable conversation text</text>
+  <text x="360" y="1002" class="secondary">Compact controls and operational rows</text>
+  <text x="360" y="1028" class="meta">28px title · 16px message · 14px UI</text>
+  <rect x="648" y="876" width="304" height="172" rx="12" fill="#FFF" stroke="#DDE4DF"/>
+  <text x="664" y="904" class="strong">States carry meaning</text>
+  <rect x="664" y="920" width="99" height="24" rx="6" fill="#F0FDF4"/>
+  <text x="674" y="936" style="fill:#166534;font-size:12px">Connected</text>
+  <rect x="775" y="920" width="100" height="24" rx="6" fill="#EFF6FF"/>
+  <text x="785" y="936" class="blue small">AI replies</text>
+  <rect x="664" y="954" width="99" height="24" rx="6" fill="#F1F5F9"/>
+  <text x="674" y="970" class="small secondary">Human replies</text>
+  <rect x="775" y="954" width="100" height="24" rx="6" fill="#FEF3F2"/>
+  <text x="785" y="970" style="fill:#B42318;font-size:12px">Sync failed</text>
+  <text x="664" y="1005" class="secondary">Connection, mode and outcome</text>
+  <text x="664" y="1028" class="meta">Shown as separate facts</text>
+  <rect x="968" y="876" width="312" height="172" rx="12" fill="#FFF" stroke="#DDE4DF"/>
+  <text x="984" y="904" class="strong">Recover without losing work</text>
+  <rect x="984" y="920" width="280" height="70" rx="8" fill="#FEF3F2"/>
+  <text x="996" y="944" style="fill:#B42318;font-weight:600">Changes were not saved.</text>
+  <text x="996" y="969" style="fill:#B42318">Your edits are still here. Try again.</text>
+  <text x="984" y="1028" class="meta">Persistent error · Clear next action</text>
+  <text x="40" y="1084" class="meta">Static composition study · Source Sans 3 proposed; portable font fallback used when unavailable · See design-system.md for full responsive and interaction contracts</text>
+</svg>

@@ -1,53 +1,260 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   WA Robot design tokens.
+
+   The canonical contract lives in docs/ux-revamp/design-system.md. The names
+   below in :root are that contract, spelled exactly as the document spells
+   them. The @theme block underneath only aliases them into short Tailwind
+   utility names (bg-panel, text-ink-muted, border-line) so page code stays
+   readable. One source of truth, two spellings — never edit one without the
+   other.
+
+   Colour world: off-white correspondence paper, dark green business signage,
+   charcoal printed receipts, blue handwritten annotations, amber pending-work
+   slips, red corrections.
+   ───────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --bg: #F6F8FB;
-  --surface: #FFFFFF;
-  --border: #E6EAF0;
-  --text-primary: #0F172A;
-  --text-secondary: #475569;
-  --brand: #16A34A;
-  --brand-hover: #15803D;
-  --brand-light: #DCFCE7;
-  --brand-text: #166534;
-  --warning: #D97706;
-  --warning-light: #FEF3C7;
-  --danger: #DC2626;
-  --danger-light: #FEE2E2;
+  /* Surfaces */
+  --color-surface-canvas: #F8FAF9;
+  --color-surface-panel: #FFFFFF;
+  --color-surface-overlay: #FFFFFF;
+  --color-surface-inset: #F3F6F4;
+  --color-surface-hover: #EDF2EF;
+  --color-surface-selected: #E4F2EA;
+
+  /* Text — four levels, never fewer */
+  --color-text-primary: #182C23;
+  --color-text-secondary: #43564C;
+  --color-text-tertiary: #64716B;
+  --color-text-disabled: #8A958F;
+
+  /* Borders */
+  --color-border-subtle: rgba(24, 44, 35, 0.06);
+  --color-border-default: rgba(24, 44, 35, 0.12);
+  --color-border-strong: #7E8D85;
+  --color-border-focus: #087F5B;
+
+  /* Action */
+  --color-action-primary: #087F5B;
+  --color-action-hover: #066749;
+  --color-action-pressed: #05563E;
+  --color-action-foreground: #FFFFFF;
+
+  /* Semantic state */
+  --color-success-text: #166534;
+  --color-success-surface: #F0FDF4;
+  --color-warning-text: #92400E;
+  --color-warning-surface: #FFFBEB;
+  --color-danger-text: #B42318;
+  --color-danger-surface: #FEF3F2;
+  --color-info-text: #1D4ED8;
+  --color-info-surface: #EFF6FF;
+
+  /* Reply identity — AI is blue, human is neutral. Green never means "AI". */
+  --color-reply-ai-text: #1D4ED8;
+  --color-reply-ai-surface: #EFF6FF;
+  --color-reply-human-text: #475569;
+  --color-reply-human-surface: #F1F5F9;
+
+  --color-overlay-scrim: rgba(24, 44, 35, 0.32);
+
+  /* Control aliases. A panel border is deliberately too quiet to identify an
+     input boundary, so controls get their own, more visible token. */
+  --input-background: var(--color-surface-inset);
+  --input-border: var(--color-border-strong);
+  --input-focus-ring: var(--color-border-focus);
+  --input-error-border: var(--color-danger-text);
+  --input-placeholder: var(--color-text-tertiary);
+
+  /* Depth: borders separate data, shadows explain overlap. Nothing else lifts. */
+  --shadow-raised: 0 1px 2px rgba(24, 44, 35, 0.06);
+  --shadow-popover: 0 4px 16px rgba(24, 44, 35, 0.10);
+  --shadow-dialog: 0 12px 40px rgba(24, 44, 35, 0.14);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-control: 120ms;
+  --duration-popover: 160ms;
+  --duration-overlay: 200ms;
+  --duration-exit: 150ms;
+
+  /* Layout constants that more than one component depends on */
+  --nav-width: 232px;
+  --topbar-height: 56px;
 }
 
 @theme inline {
-  --color-background: var(--bg);
-  --color-foreground: var(--text-primary);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Surfaces */
+  --color-canvas: var(--color-surface-canvas);
+  --color-panel: var(--color-surface-panel);
+  --color-overlay: var(--color-surface-overlay);
+  --color-inset: var(--color-surface-inset);
+  --color-hover: var(--color-surface-hover);
+  --color-selected: var(--color-surface-selected);
+
+  /* Text */
+  --color-ink: var(--color-text-primary);
+  --color-ink-muted: var(--color-text-secondary);
+  --color-ink-soft: var(--color-text-tertiary);
+  --color-ink-faint: var(--color-text-disabled);
+
+  /* Lines */
+  --color-line-soft: var(--color-border-subtle);
+  --color-line: var(--color-border-default);
+  --color-line-strong: var(--color-border-strong);
+  --color-focus: var(--color-border-focus);
+
+  /* Action */
+  --color-action: var(--color-action-primary);
+  --color-action-hover: var(--color-action-hover);
+  --color-action-pressed: var(--color-action-pressed);
+  --color-on-action: var(--color-action-foreground);
+
+  /* State */
+  --color-success: var(--color-success-text);
+  --color-success-bg: var(--color-success-surface);
+  --color-warning: var(--color-warning-text);
+  --color-warning-bg: var(--color-warning-surface);
+  --color-danger: var(--color-danger-text);
+  --color-danger-bg: var(--color-danger-surface);
+  --color-info: var(--color-info-text);
+  --color-info-bg: var(--color-info-surface);
+  --color-ai: var(--color-reply-ai-text);
+  --color-ai-bg: var(--color-reply-ai-surface);
+  --color-human: var(--color-reply-human-text);
+  --color-human-bg: var(--color-reply-human-surface);
+  --color-scrim: var(--color-overlay-scrim);
+
+  /* Type. 16px root, ~1.2 scale rounded to usable UI sizes. */
+  --font-sans: var(--font-source-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  --text-title: 1.75rem;
+  --text-title--line-height: 2.25rem;
+  --text-title--letter-spacing: -0.02em;
+
+  /* Radius: small accents, controls, panels, dialogs. */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-raised: var(--shadow-raised);
+  --shadow-popover: var(--shadow-popover);
+  --shadow-dialog: var(--shadow-dialog);
+
+  --ease-out: var(--ease-out);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  /* Long words, URLs and non-Latin text must not widen the document. */
+  overflow-wrap: break-word;
+}
+
 body {
-  background: var(--bg);
-  color: var(--text-primary);
-  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--color-surface-canvas);
+  color: var(--color-text-primary);
+  font-family: var(--font-source-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
   -webkit-font-smoothing: antialiased;
+  text-wrap: pretty;
 }
 
-input, textarea, select {
-  color: var(--text-primary);
-  background-color: var(--surface);
+h1, h2, h3 {
+  text-wrap: balance;
 }
 
-/* Scrollbar */
+/* One visible focus treatment everywhere, never removed. 2px ring, 2px gap. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Controls are inset — they receive content, so they sit slightly darker than
+   the surface around them and carry a border strong enough to find. */
+:where(input, textarea, select) {
+  color: var(--color-text-primary);
+  background-color: var(--input-background);
+  font: inherit;
+}
+
+::placeholder {
+  color: var(--input-placeholder);
+  opacity: 1;
+}
+
+/* Counts, timestamps and money must not jitter as they update. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 3px;
+  background: rgba(24, 44, 35, 0.16);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(24, 44, 35, 0.28);
+  background-clip: content-box;
+}
+
+@keyframes wa-fade-in {
+  from { opacity: 0 }
+  to { opacity: 1 }
+}
+@keyframes wa-slide-up {
+  from { opacity: 0; transform: translateY(8px) }
+  to { opacity: 1; transform: none }
+}
+@keyframes wa-slide-in-right {
+  from { opacity: 0; transform: translateX(16px) }
+  to { opacity: 1; transform: none }
+}
+@keyframes wa-scale-in {
+  from { opacity: 0; transform: scale(0.97) }
+  to { opacity: 1; transform: none }
+}
+@keyframes wa-spin {
+  to { transform: rotate(360deg) }
+}
+@keyframes wa-pulse {
+  50% { opacity: 0.45 }
+}
+
+.anim-fade { animation: wa-fade-in var(--duration-overlay) var(--ease-out) both }
+.anim-slide-up { animation: wa-slide-up var(--duration-overlay) var(--ease-out) both }
+.anim-drawer { animation: wa-slide-in-right var(--duration-overlay) var(--ease-out) both }
+.anim-dialog { animation: wa-scale-in var(--duration-overlay) var(--ease-out) both }
+.anim-spin { animation: wa-spin 700ms linear infinite }
+.anim-pulse { animation: wa-pulse 1.6s var(--ease-out) infinite }
+
+/* Reduced motion drops movement and the skeleton pulse. Status still updates —
+   nothing that conveys information is animation-only. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  .anim-slide-up, .anim-drawer, .anim-dialog { animation-name: wa-fade-in }
+  .anim-pulse { animation: none; opacity: 0.6 }
+  .anim-spin { animation: wa-spin 1.4s linear infinite }
 }

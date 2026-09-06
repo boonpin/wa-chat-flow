@@ -1,8 +1,14 @@
-# Automation Settings
+# Reply Settings
 
-The `Settings` page controls system-wide reply behavior.
+**Automation → Reply settings** controls system-wide reply behaviour. It used to
+live under `Settings`; `Settings` is now a hub that points at whichever page owns
+each setting.
 
-## Auto Reply (Global Switch)
+Changes here are a draft until you choose **Save changes** — the "Currently
+saved" strip at the top always describes what the server has, not what you have
+just switched.
+
+## AI replies (global switch)
 
 - When ON: the system can send AI replies.
 - When OFF: no AI replies are sent, whatever any conversation or contact says.

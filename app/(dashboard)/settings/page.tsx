@@ -1,238 +1,147 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Badge, Card, Select, Toggle, useToast } from '@/components/ui'
+import Link from 'next/link'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  Badge,
+  Banner,
+  BotIcon,
+  ChevronRight,
+  ContactsIcon,
+  HelpIcon,
+  PageBody,
+  PageHeader,
+  Panel,
+  PanelBody,
+  PanelHeader,
+  ReplySettingsIcon,
+  SettingsIcon,
+  ToolIcon,
+  WhatsAppIcon,
+} from '@/components/ui'
 
-interface Settings {
-  id: string
-  autoReplyEnabled: boolean
-  defaultBotId: string | null
-}
-
-interface Bot {
-  id: string
-  name: string
-  provider: string
-  model: string
-  isDefault: boolean
-}
-
-function SectionCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
-  return (
-    <Card>
-      <div className="px-5 py-4 border-b border-[#E6EAF0]">
-        <p className="text-sm font-semibold text-[#0F172A]">{title}</p>
-        <p className="text-xs text-[#475569] mt-0.5">{description}</p>
-      </div>
-      <div className="p-5 space-y-4">{children}</div>
-    </Card>
-  )
-}
+/**
+ * A hub, not a second editor. Every setting has exactly one owner, and this
+ * page's job is to say which one — duplicating a form here is how two screens
+ * end up disagreeing about the same value.
+ */
+const OWNERS: {
+  href: string
+  title: string
+  what: string
+  icon: React.ReactNode
+  highlight?: boolean
+}[] = [
+  {
+    href: '/automation/replies',
+    title: 'Reply settings',
+    what: 'Whether the AI may answer at all, and which bot answers when nothing more specific applies.',
+    icon: <ReplySettingsIcon size={18} />,
+    highlight: true,
+  },
+  {
+    href: '/bots',
+    title: 'AI bots',
+    what: 'Instructions, provider, model and API key for each bot, and which tools it may use.',
+    icon: <BotIcon size={18} />,
+  },
+  {
+    href: '/tools',
+    title: 'Tools',
+    what: 'What each tool captures, and the Google Sheet credentials it writes with.',
+    icon: <ToolIcon size={18} />,
+  },
+  {
+    href: '/channels/whatsapp',
+    title: 'WhatsApp channels',
+    what: 'Connecting, renaming, disconnecting and removing the numbers your business uses.',
+    icon: <WhatsAppIcon size={18} />,
+  },
+  {
+    href: '/contacts',
+    title: 'Contacts',
+    what: 'Per-customer reply mode and default bot.',
+    icon: <ContactsIcon size={18} />,
+  },
+  {
+    href: '/settings/access',
+    title: 'Access and setup',
+    what: 'Sign-in accounts, gateway configuration and the limits worth knowing about.',
+    icon: <SettingsIcon size={18} />,
+  },
+]
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<Settings | null>(null)
-  const [bots, setBots] = useState<Bot[]>([])
-  const [saved, setSaved] = useState<Settings | null>(null)
-  const [saving, setSaving] = useState(false)
-  const { toast } = useToast()
+  const router = useRouter()
 
-  async function fetchData() {
-    const [sr, br] = await Promise.all([fetch('/api/settings'), fetch('/api/bots')])
-    const s = await sr.json()
-    const b = await br.json()
-    setSettings(s)
-    setSaved(s)
-    setBots(b)
-  }
-
-  useEffect(() => { fetchData() }, [])
-
-  function update<K extends keyof Settings>(key: K, val: Settings[K]) {
-    setSettings(s => s ? { ...s, [key]: val } : s)
-  }
-
-  const dirty = settings && saved && (
-    settings.autoReplyEnabled !== saved.autoReplyEnabled ||
-    settings.defaultBotId !== saved.defaultBotId
-  )
-
-  async function handleSave() {
-    if (!settings) return
-    setSaving(true)
-    try {
-      const r = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      })
-      if (!r.ok) throw new Error()
-      setSaved({ ...settings })
-      toast('Settings saved')
-    } catch {
-      toast('Failed to save settings', 'error')
-    }
-    setSaving(false)
-  }
-
-  function handleDiscard() {
-    if (saved) setSettings({ ...saved })
-  }
-
-  if (!settings) {
-    return (
-      <div className="p-8 max-w-2xl">
-        <div className="mb-8">
-          <div className="h-6 w-32 bg-[#E6EAF0] rounded animate-pulse mb-1" />
-          <div className="h-4 w-48 bg-[#E6EAF0] rounded animate-pulse" />
-        </div>
-        <div className="space-y-4">
-          {[1, 2].map(i => <div key={i} className="h-32 bg-[#E6EAF0] rounded-xl animate-pulse" />)}
-        </div>
-      </div>
-    )
-  }
-
-  const defaultBot = bots.find(b => b.id === settings.defaultBotId)
+  // /settings#auto-reply was the old bookmark for the automation form, which
+  // now lives at its own route.
+  useEffect(() => {
+    if (window.location.hash === '#auto-reply') router.replace('/automation/replies')
+  }, [router])
 
   return (
-    <div className="p-8 max-w-2xl">
-      <div className="mb-8">
-        <h1 className="text-xl font-semibold text-[#0F172A]">Automation Settings</h1>
-        <p className="text-sm text-[#475569] mt-0.5">Control how auto-replies work across the system</p>
-      </div>
+    <PageBody width="content">
+      <PageHeader
+        title="Settings"
+        description="Where each piece of configuration lives, and what it affects."
+      />
 
-      <div className="space-y-4">
-        {/* Auto Reply section */}
-        <SectionCard
-          title="Auto Reply"
-          description="Globally enable or disable AI-powered auto replies for all contacts"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-[#0F172A]">Enable Auto Reply</p>
-              <p className="text-xs text-[#475569] mt-0.5">
-                {settings.autoReplyEnabled
-                  ? 'AI is currently replying to incoming messages'
-                  : 'AI is paused — no replies will be sent'}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Badge variant={settings.autoReplyEnabled ? 'green' : 'gray'} dot>
-                {settings.autoReplyEnabled ? 'Active' : 'Paused'}
-              </Badge>
-              <Toggle
-                checked={settings.autoReplyEnabled}
-                onChange={v => update('autoReplyEnabled', v)}
-              />
-            </div>
-          </div>
+      <Banner tone="info" title="Reply settings moved" className="mb-5">
+        Global AI permission and the default bot now live under{' '}
+        <Link href="/automation/replies" className="font-semibold underline underline-offset-2">
+          Automation → Reply settings
+        </Link>
+        , next to the bots and tools they control.
+      </Banner>
 
-          {!settings.autoReplyEnabled && (
-            <div className="flex items-start gap-2.5 p-3 bg-[#FEF3C7] rounded-lg">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="shrink-0 mt-0.5">
-                <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
-              <p className="text-xs text-[#92400E]">
-                Auto reply is disabled. Incoming messages will not receive AI responses, even if individual contacts have AI enabled.
-              </p>
-            </div>
-          )}
-        </SectionCard>
+      <Panel className="mb-5">
+        <PanelHeader title="Configuration" description="Each setting has one owner. Follow the link to change it." />
+        <ul>
+          {OWNERS.map((owner) => (
+            <li key={owner.href}>
+              <Link
+                href={owner.href}
+                className="flex items-start gap-3 border-b border-line-soft px-4 py-4 transition-colors last:border-0 hover:bg-hover md:px-5"
+              >
+                <span className="mt-0.5 shrink-0 text-ink-soft">{owner.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-ink">{owner.title}</span>
+                    {owner.highlight && <Badge variant="info">Moved here</Badge>}
+                  </span>
+                  <span className="mt-0.5 block text-sm leading-5 text-ink-muted">{owner.what}</span>
+                </span>
+                <span className="mt-0.5 shrink-0 text-ink-soft">
+                  <ChevronRight size={16} />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Panel>
 
-        {/* Default Bot section */}
-        <SectionCard
-          title="Default Bot"
-          description="The fallback bot used when a contact has no specific bot assigned"
-        >
-          <Select
-            label="Default Bot"
-            hint="Contacts without a specific bot assignment will use this bot"
-            value={settings.defaultBotId || ''}
-            onChange={e => update('defaultBotId', e.target.value || null)}
+      <Panel>
+        <PanelHeader title="Getting help" />
+        <PanelBody>
+          <Link
+            href="/help"
+            className="flex items-center gap-3 rounded-md border border-line bg-inset/60 p-3 hover:bg-hover"
           >
-            <option value="">None — AI won&apos;t reply without a bot assigned</option>
-            {bots.map(bot => (
-              <option key={bot.id} value={bot.id}>{bot.name} ({bot.provider} · {bot.model})</option>
-            ))}
-          </Select>
-
-          {settings.defaultBotId && defaultBot && (
-            <div className="flex items-center gap-3 p-3 bg-[#F0FDF4] rounded-lg">
-              <div className="w-7 h-7 rounded-lg bg-[#DCFCE7] flex items-center justify-center shrink-0">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2">
-                  <rect x="3" y="11" width="18" height="10" rx="2" />
-                  <path d="M12 11V7M9 7h6" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-[#166534]">{defaultBot.name}</p>
-                <p className="text-xs text-[#4ADE80] opacity-80">{defaultBot.provider} · {defaultBot.model}</p>
-              </div>
-            </div>
-          )}
-
-          {!settings.defaultBotId && (
-            <div className="flex items-start gap-2.5 p-3 bg-[#FEF3C7] rounded-lg">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="shrink-0 mt-0.5">
-                <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
-              <p className="text-xs text-[#92400E]">
-                No default bot set. Contacts without a specific bot assigned will not receive AI replies.
-              </p>
-            </div>
-          )}
-        </SectionCard>
-
-        {/* Guardrails section */}
-        <SectionCard
-          title="How Auto Reply Works"
-          description="Understanding the reply decision logic"
-        >
-          <ol className="space-y-3">
-            {[
-              { step: '1', label: 'System auto reply', desc: 'Must be ON (controlled here)' },
-              { step: '2', label: 'Contact AI enabled', desc: 'Per-contact setting in Contacts page' },
-              { step: '3', label: 'Bot selection', desc: 'Contact\'s assigned bot → Default bot' },
-              { step: '4', label: 'AI generates reply', desc: 'Using the bot\'s system prompt' },
-            ].map(item => (
-              <li key={item.step} className="flex items-start gap-3">
-                <div className="w-5 h-5 rounded-full bg-[#F1F5F9] flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-[10px] font-bold text-[#475569]">{item.step}</span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[#0F172A]">{item.label}</p>
-                  <p className="text-xs text-[#475569]">{item.desc}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </SectionCard>
-      </div>
-
-      {/* Sticky save bar */}
-      {dirty && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 ml-28 flex items-center gap-3 bg-[#0F172A] text-white px-5 py-3 rounded-2xl shadow-2xl z-30">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
-          </svg>
-          <span className="text-sm">You have unsaved changes</span>
-          <div className="w-px h-4 bg-white/20" />
-          <button onClick={handleDiscard} className="text-sm text-white/60 hover:text-white transition-colors">Discard</button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-[#16A34A] hover:bg-[#15803D] text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            {saving && (
-              <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            )}
-            {saving ? 'Saving...' : 'Save Settings'}
-          </button>
-        </div>
-      )}
-    </div>
+            <span className="text-ink-soft">
+              <HelpIcon size={18} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-ink">Task guides</span>
+              <span className="mt-0.5 block text-sm text-ink-muted">
+                Connecting a sheet, taking over a conversation, recovering a lead.
+              </span>
+            </span>
+            <ChevronRight size={16} />
+          </Link>
+        </PanelBody>
+      </Panel>
+    </PageBody>
   )
 }
