@@ -254,13 +254,15 @@ export function StatusFact({
   label,
   children,
   action,
+  className = '',
 }: {
   label: string
   children: ReactNode
   action?: ReactNode
+  className?: string
 }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       <p className="text-xs text-ink-soft">{label}</p>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink">{children}</div>
       {action && <div className="mt-1.5">{action}</div>}

@@ -10,6 +10,7 @@ import {
   FormSection,
   PageBody,
   PageHeader,
+  Input,
   Panel,
   PanelBody,
   PanelHeader,
@@ -28,10 +29,18 @@ import {
   AUTO_REPLY_MODE_COPY,
   type AutoReplyMode,
 } from '@/lib/settings/auto-reply'
+import {
+  REPLY_MAX_WAIT_BOUNDS,
+  REPLY_WINDOW_BOUNDS,
+  describeReplyTiming,
+  repliesPerMessage,
+} from '@/lib/settings/reply-timing'
 
 interface Settings {
   autoReplyMode: AutoReplyMode
   defaultBotId: string | null
+  replyWindowSeconds: number
+  replyMaxWaitSeconds: number
 }
 
 export default function ReplySettingsPage() {
@@ -76,7 +85,15 @@ export default function ReplySettingsPage() {
     data ? { channels: [], settings: data.settings, bots: data.bots } : null
   )
   const savedPolicy = AUTO_REPLY_MODE_COPY[saved?.autoReplyMode ?? 'off'] ?? AUTO_REPLY_MODE_COPY.off
+  const savedTiming = {
+    windowSeconds: saved?.replyWindowSeconds ?? 0,
+    maxWaitSeconds: saved?.replyMaxWaitSeconds ?? 0,
+  }
   const draftBot = draft?.defaultBotId ? bots.find((b) => b.id === draft.defaultBotId) : null
+  const draftTiming = {
+    windowSeconds: draft?.replyWindowSeconds ?? 0,
+    maxWaitSeconds: draft?.replyMaxWaitSeconds ?? 0,
+  }
 
   async function save() {
     if (!draft) return
@@ -138,6 +155,12 @@ export default function ReplySettingsPage() {
                   <span className="text-xs text-ink-soft">from the bot’s own default flag</span>
                 )}
               </StatusFact>
+              <StatusFact label="Reply timing" className="sm:col-span-2">
+                <span className="font-medium">
+                  {repliesPerMessage(savedTiming) ? 'One reply per message' : `Waits ${savedTiming.windowSeconds}s`}
+                </span>
+                <span className="text-xs text-ink-soft">{describeReplyTiming(savedTiming)}</span>
+              </StatusFact>
             </PanelBody>
           </Panel>
 
@@ -191,6 +214,64 @@ export default function ReplySettingsPage() {
                 No conversation receives an automatic reply, even one set to AI and even for a
                 customer whose contact has AI switched on. Turning it back on later does not change
                 any conversation that has since been set to human replies.
+              </Banner>
+            )}
+          </FormSection>
+
+          <FormSection
+            title="How replies are grouped"
+            scope="Applies to AI replies on every number. Your own replies from the Inbox always send immediately."
+          >
+            <p className="text-sm text-ink-muted">
+              People type in bursts — “hi”, “im interested”, “whats the price” — and that is one
+              question, not three. The bot waits for a pause before answering, then answers
+              everything said in the meantime in a single reply.
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                label="Wait after the last message"
+                type="number"
+                inputMode="numeric"
+                min={REPLY_WINDOW_BOUNDS.min}
+                max={REPLY_WINDOW_BOUNDS.max}
+                value={draft.replyWindowSeconds}
+                onChange={(e) =>
+                  setEdits({ ...draft, replyWindowSeconds: e.target.valueAsNumber || 0 })
+                }
+                hint={`Seconds of quiet before the bot answers. Each new message restarts it. 0–${REPLY_WINDOW_BOUNDS.max}.`}
+              />
+              <Input
+                label="Never wait longer than"
+                type="number"
+                inputMode="numeric"
+                min={REPLY_MAX_WAIT_BOUNDS.min}
+                max={REPLY_MAX_WAIT_BOUNDS.max}
+                value={draft.replyMaxWaitSeconds}
+                onChange={(e) =>
+                  setEdits({ ...draft, replyMaxWaitSeconds: e.target.valueAsNumber || 0 })
+                }
+                hint={`Counted from the first unanswered message, so someone typing non-stop is still answered. ${REPLY_MAX_WAIT_BOUNDS.min}–${REPLY_MAX_WAIT_BOUNDS.max}.`}
+              />
+            </div>
+
+            {repliesPerMessage(draftTiming) ? (
+              <Banner tone="warning" title="Every message gets its own reply">
+                With no wait, a customer sending three quick messages receives three separate
+                replies, each written before the next message arrived. Set a few seconds here to
+                have them answered together.
+              </Banner>
+            ) : (
+              <Banner tone="info" title="What the customer sees">
+                {describeReplyTiming(draftTiming)} They see the “typing…” indicator while the reply
+                is being written.
+              </Banner>
+            )}
+
+            {draftTiming.maxWaitSeconds < draftTiming.windowSeconds && (
+              <Banner tone="warning" title="The ceiling is below the wait">
+                Saving raises the ceiling to {draftTiming.windowSeconds}s to match, since a ceiling
+                under the wait would answer before the pause ever elapsed.
               </Banner>
             )}
           </FormSection>
@@ -270,6 +351,15 @@ export default function ReplySettingsPage() {
                     label: 'A bot is available',
                     detail:
                       'The conversation’s bot, then the customer’s bot, then this default. Bots that are turned off are skipped.',
+                  },
+                  {
+                    label: 'The customer has finished typing',
+                    detail: describeReplyTiming(savedTiming),
+                  },
+                  {
+                    label: 'Nobody answered first',
+                    detail:
+                      'If you reply from the Inbox while the bot is waiting, the bot stays quiet — your reply is the answer.',
                   },
                 ].map((step, i) => (
                   <li key={step.label} className="flex items-start gap-3">

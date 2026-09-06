@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { messages, systemSettings } from '@/lib/db/schema'
+import { contacts as contactsTable, messages, systemSettings } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { findOrCreateContact, type Contact } from '@/lib/contacts/service'
@@ -9,9 +9,10 @@ import {
   touchConversation,
   type Conversation,
 } from '@/lib/conversation/service'
-import { buildHistory } from '@/lib/ai/context'
+import { buildContext } from '@/lib/ai/context'
 import { resolveHandler } from '@/lib/ai/handler'
 import { resolveTools } from '@/lib/tools/registry'
+import { getProvider } from '@/lib/wa/provider'
 import { selectBot } from './bot-selection'
 import { sendOutgoingMessage } from './outgoing'
 import { repliesToExisting, repliesToNew, type AutoReplyMode } from '@/lib/settings/auto-reply'
@@ -22,12 +23,19 @@ import type { ToolRun } from '@/lib/tools/types'
  * The single entry point for every inbound WhatsApp message, regardless of
  * transport. Webhooks do nothing but normalise and call in here.
  *
- *   dedupe → contact → conversation → store   (persistIncomingMessage)
- *   → mode check → bot → context → AI → send  (runAutoReply)
+ *   dedupe → contact → conversation → store      (persistIncomingMessage)
+ *   → open or extend the reply window            (scheduleAutoReply)
+ *   → mode check → bot → context → AI → send     (runAutoReply)
  *
- * The split matters: persistence must finish before the webhook is acked so a
- * retry cannot duplicate the message, while the AI call — which can take
- * seconds — must not hold the webhook connection open.
+ * The first split matters for delivery: persistence must finish before the
+ * webhook is acked so a retry cannot duplicate the message, while the AI call —
+ * which can take seconds — must not hold the webhook connection open.
+ *
+ * The second split matters for the reply itself. `runAutoReply` is keyed on the
+ * conversation, not the message that woke it: by the time it runs the customer
+ * may have sent three more, and answering the burst once is the entire point of
+ * lib/messaging/reply-scheduler.ts. Everything it needs is re-read from the
+ * database, so it behaves identically whether a timer or a restart called it.
  */
 
 export interface PersistedIncoming {
@@ -42,17 +50,20 @@ export interface PersistedIncoming {
 
 export type PersistResult = PersistedIncoming | { status: 'duplicate' }
 
+export type AutoReplySkipReason =
+  | 'auto_reply_disabled'
+  | 'new_conversation'
+  | 'human_mode'
+  | 'no_bot'
+  | 'unsupported_type'
+  | 'empty_reply'
+  /** Someone — an operator, or an earlier flush — answered the burst first. */
+  | 'already_answered'
+  | 'gone'
+  | 'no_session'
+
 export type AutoReplyOutcome =
-  | {
-      status: 'skipped'
-      reason:
-        | 'auto_reply_disabled'
-        | 'new_conversation'
-        | 'human_mode'
-        | 'no_bot'
-        | 'unsupported_type'
-        | 'empty_reply'
-    }
+  | { status: 'skipped'; reason: AutoReplySkipReason }
   | { status: 'replied'; messageId: string }
   | { status: 'failed'; error: string }
 
@@ -134,33 +145,52 @@ export function persistIncomingMessage(incoming: IncomingMessage): PersistResult
   return { status: 'stored', incoming, contact, conversation, openedConversation, storedMessageId }
 }
 
-/** Steps 5–8: decide whether the AI answers, and answer. */
-export async function runAutoReply(persisted: PersistedIncoming): Promise<AutoReplyOutcome> {
-  const { incoming, contact, openedConversation, storedMessageId } = persisted
+/**
+ * Steps 5–8: decide whether the AI answers this thread, and answer.
+ *
+ * Takes a conversation rather than a message because a reply answers a burst,
+ * not a line. Every input is re-read here — the policy, the thread's mode, the
+ * bot, and the unanswered messages themselves — because minutes can pass
+ * between the webhook that armed the window and this call, and an operator may
+ * have taken the thread over in between.
+ */
+export async function runAutoReply(conversationId: string): Promise<AutoReplyOutcome> {
+  const conversation = getConversation(conversationId)
+  if (!conversation) return { status: 'skipped', reason: 'gone' }
 
   const settings = db.select().from(systemSettings).where(eq(systemSettings.id, 'default')).get()
   const autoReplyMode = (settings?.autoReplyMode ?? 'off') as AutoReplyMode
 
-  // Re-read the conversation: this runs after the webhook was acked, so an
-  // operator may have taken the thread off auto in the meantime.
-  const conversation = getConversation(persisted.conversation.id) ?? persisted.conversation
-
   // ─── 5. Should the AI answer at all? ────────────────────────────────────────
   if (!repliesToExisting(autoReplyMode)) return { status: 'skipped', reason: 'auto_reply_disabled' }
+  if (conversation.mode !== 'auto') return { status: 'skipped', reason: 'human_mode' }
 
-  // Re-read for the same reason as the mode: the policy can tighten between the
-  // ack and here, and a thread this very message opened is not an existing one.
-  if (openedConversation && !repliesToNew(autoReplyMode)) {
+  // ─── 6. What is actually unanswered ─────────────────────────────────────────
+  // An empty burst is the normal outcome of a race the window exists to absorb:
+  // the operator typed a reply while the AI was still waiting to. Whoever spoke
+  // first wins, and nobody gets answered twice.
+  const context = buildContext(conversation.id)
+  if (context.pending.length === 0) return { status: 'skipped', reason: 'already_answered' }
+
+  // Nothing said before the burst means the thread opens with it. Under
+  // `existing` that is a new conversation, which this policy does not answer —
+  // a second guard behind the mode written at creation, for a policy that
+  // tightened while the window was open.
+  if (context.history.length === 0 && !repliesToNew(autoReplyMode)) {
     return { status: 'skipped', reason: 'new_conversation' }
   }
 
-  if (conversation.mode !== 'auto') return { status: 'skipped', reason: 'human_mode' }
+  const contact = db
+    .select()
+    .from(contactsTable)
+    .where(eq(contactsTable.id, conversation.contactId))
+    .get()
+  if (!contact) return { status: 'skipped', reason: 'gone' }
 
-  // Media carries no text to reason about — leave those for a human.
-  const text = incoming.text?.trim()
-  if (incoming.type !== 'text' || !text) return { status: 'skipped', reason: 'unsupported_type' }
+  const sessionId = conversation.waSessionId ?? contact.waSessionId
+  if (!sessionId) return { status: 'skipped', reason: 'no_session' }
 
-  // ─── 6. Bot ─────────────────────────────────────────────────────────────────
+  // ─── 7. Bot ─────────────────────────────────────────────────────────────────
   const bot = selectBot({
     conversationBotId: conversation.botId,
     contactBotId: contact.aiBotId,
@@ -168,12 +198,19 @@ export async function runAutoReply(persisted: PersistedIncoming): Promise<AutoRe
   })
   if (!bot) return { status: 'skipped', reason: 'no_bot' }
 
+  const provider = getProvider()
+
   try {
-    // ─── 7. Context + AI ──────────────────────────────────────────────────────
+    // ─── 8. Context + AI ──────────────────────────────────────────────────────
+    // The burst is joined into one turn rather than replayed as several: it is
+    // one thought the customer happened to send in pieces, and splitting it
+    // would invite the model to answer the last fragment alone.
+    await provider.setTyping({ sessionId, phone: contact.phoneNumber, typing: true })
+
     const output = await resolveHandler(bot).reply({
       bot,
-      history: buildHistory(conversation.id, storedMessageId),
-      message: text,
+      history: context.history,
+      message: context.pending.join('\n'),
       contact: { name: contact.name, phone: contact.phoneNumber },
       conversationId: conversation.id,
       contactId: contact.id,
@@ -183,23 +220,28 @@ export async function runAutoReply(persisted: PersistedIncoming): Promise<AutoRe
     // Tool runs are recorded even when the model then falls silent, so an
     // operator can see that a lead was captured on a thread that looks stalled.
     for (const run of output.toolRuns ?? []) {
-      recordToolRun(conversation.id, contact.id, incoming.provider, run)
+      recordToolRun(conversation.id, contact.id, provider.name, run)
     }
 
     const reply = output.text.trim()
     if (!reply) return { status: 'skipped', reason: 'empty_reply' }
 
-    // ─── 8. Send ──────────────────────────────────────────────────────────────
+    // ─── 9. Send ──────────────────────────────────────────────────────────────
     const sent = await sendOutgoingMessage({
       conversationId: conversation.id,
       contactId: contact.id,
       phone: contact.phoneNumber,
-      sessionId: incoming.sessionId,
+      sessionId,
       text: reply,
       senderType: 'ai',
     })
 
-    if (sent.ok) console.log(`[wa] [AI] ${contact.name || contact.phoneNumber}: ${reply}`)
+    if (sent.ok) {
+      const answered = context.pending.length
+      console.log(
+        `[wa] [AI] ${contact.name || contact.phoneNumber}${answered > 1 ? ` (${answered} messages)` : ''}: ${reply}`
+      )
+    }
 
     return sent.ok
       ? { status: 'replied', messageId: sent.messageId }
@@ -207,18 +249,15 @@ export async function runAutoReply(persisted: PersistedIncoming): Promise<AutoRe
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     console.error('[wa] AI reply error:', err)
-    recordAiFailure(conversation.id, contact.id, incoming.provider, error)
+    recordAiFailure(conversation.id, contact.id, provider.name, error)
     return { status: 'failed', error }
+  } finally {
+    // The indicator outlives a crashed reply otherwise, leaving the customer
+    // watching a bot that is never going to finish its sentence.
+    await provider
+      .setTyping({ sessionId, phone: contact.phoneNumber, typing: false })
+      .catch(() => {})
   }
-}
-
-/** Convenience wrapper that runs both phases. */
-export async function handleIncomingMessage(
-  incoming: IncomingMessage
-): Promise<PersistResult | AutoReplyOutcome> {
-  const persisted = persistIncomingMessage(incoming)
-  if (persisted.status === 'duplicate') return persisted
-  return runAutoReply(persisted)
 }
 
 /**

@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { contacts, waSessions } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getConversation, listMessages, updateConversation } from '@/lib/conversation/service'
+import { cancelAutoReply } from '@/lib/messaging/reply-scheduler'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -58,6 +59,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .where(eq(contacts.id, conversation.contactId))
       .run()
   }
+
+  // Taking the thread off AI, or closing it, must also drop a reply that is
+  // still inside its window — otherwise the bot answers a conversation the
+  // operator has just claimed.
+  if (patch.mode === 'human' || patch.status === 'resolved') cancelAutoReply(id)
 
   return NextResponse.json(updateConversation(id, patch))
 }

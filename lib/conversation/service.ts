@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { conversations, contacts, messages, waSessions, aiBots } from '@/lib/db/schema'
-import { and, desc, eq, like, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, like, ne, or, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 
 export type Conversation = typeof conversations.$inferSelect
@@ -43,6 +43,7 @@ export function getOrCreateOpenConversation(input: {
     mode: input.defaultMode,
     status: 'open',
     lastMessageAt: now,
+    autoReplyDueAt: null,
     createdAt: now,
     updatedAt: now,
   }
@@ -61,6 +62,22 @@ export function touchConversation(id: string, at: string = new Date().toISOStrin
     .set({ lastMessageAt: at, status: 'open', updatedAt: at })
     .where(eq(conversations.id, id))
     .run()
+}
+
+/**
+ * Arms or clears this thread's pending AI reply.
+ *
+ * Deliberately not part of `updateConversation`: the deadline is scheduler
+ * bookkeeping, not an operator's edit, and it must not bump `updated_at` and
+ * push the thread around the Inbox every time a message restarts the window.
+ */
+export function setAutoReplyDueAt(id: string, dueAt: string | null): void {
+  db.update(conversations).set({ autoReplyDueAt: dueAt }).where(eq(conversations.id, id)).run()
+}
+
+/** Every thread that still owes a reply. Used to re-arm timers after a restart. */
+export function listConversationsAwaitingReply(): Conversation[] {
+  return db.select().from(conversations).where(isNotNull(conversations.autoReplyDueAt)).all()
 }
 
 export function updateConversation(

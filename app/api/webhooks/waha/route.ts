@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { waha } from '@/lib/config'
 import { normalizeIncomingMessage, normalizeSessionStatus, type WahaWebhookBody } from '@/lib/wa/normalize'
-import { persistIncomingMessage, runAutoReply } from '@/lib/messaging/incoming-handler'
+import { persistIncomingMessage } from '@/lib/messaging/incoming-handler'
+import { scheduleAutoReply } from '@/lib/messaging/reply-scheduler'
 import { recordStatus } from '@/lib/wa/sessions'
 import { getProvider } from '@/lib/wa/provider'
 
@@ -10,8 +11,9 @@ import { getProvider } from '@/lib/wa/provider'
  * WAHA event receiver.
  *
  * Deliberately thin: validate → normalise → hand to the message handler →
- * return 200. No AI logic lives here. The auto-reply runs after the response so
- * a slow LLM cannot make WAHA time out and redeliver the event.
+ * return 200. No AI logic lives here. The auto-reply is scheduled rather than
+ * run, so neither a slow LLM nor the reply window can make WAHA time out and
+ * redeliver the event.
  *
  * This route is public by design (WAHA has no session cookie), so the HMAC
  * signature is the only thing standing between the internet and the handler.
@@ -50,10 +52,16 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ ok: true, duplicate: true })
         }
 
-        // Fire-and-forget: the reply continues after this response is sent.
-        void runAutoReply(persisted).catch((err) => {
-          console.error('[webhook] Auto-reply failed:', err)
-        })
+        // Opens or extends the thread's reply window rather than replying now:
+        // the answer is sent once the customer stops typing, and covers every
+        // message they sent in the meantime. Nothing here waits for it.
+        try {
+          scheduleAutoReply(persisted)
+        } catch (err) {
+          // The message is already stored, so a scheduling failure must not
+          // turn into a 500 and make WAHA redeliver it.
+          console.error('[webhook] Could not schedule the auto-reply:', err)
+        }
 
         return NextResponse.json({ ok: true })
       }

@@ -5,6 +5,7 @@ import { contacts, messages } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getConversation } from '@/lib/conversation/service'
 import { sendOutgoingMessage } from '@/lib/messaging/outgoing'
+import { cancelAutoReply } from '@/lib/messaging/reply-scheduler'
 
 /** Manual reply from an operator in the inbox. */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -29,6 +30,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 409 }
     )
   }
+
+  // The operator is answering this burst themselves. Cancel before sending, so
+  // a window that elapses mid-send cannot start a second reply to the same
+  // messages.
+  cancelAutoReply(conversation.id)
 
   const result = await sendOutgoingMessage({
     conversationId: conversation.id,

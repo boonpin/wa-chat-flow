@@ -52,7 +52,8 @@ replaced without touching business logic:
 
 - [lib/config.ts](lib/config.ts) — every environment variable, read in one place. Don't read `process.env` elsewhere.
 - [lib/wa/](lib/wa/) — `types.ts` (transport contracts), `waha-provider.ts`, `normalize.ts` (webhook payload → internal shape), `sessions.ts` (session records + live status), `phone.ts`
-- [lib/messaging/incoming-handler.ts](lib/messaging/incoming-handler.ts) — **the single entry point for every inbound message.** Split into `persistIncomingMessage` (synchronous, must finish before the webhook acks) and `runAutoReply` (async, runs after).
+- [lib/messaging/incoming-handler.ts](lib/messaging/incoming-handler.ts) — **the single entry point for every inbound message.** Split into `persistIncomingMessage` (synchronous, must finish before the webhook acks) and `runAutoReply` (async, runs later). `runAutoReply` is keyed on the **conversation**, not the message that woke it, and re-reads everything it needs from the database — so a timer and a restart-recovery call behave identically.
+- [lib/messaging/reply-scheduler.ts](lib/messaging/reply-scheduler.ts) — **decides when a thread is answered.** An inbound message opens a debounce window instead of triggering a reply; every further message restarts it, and one reply then answers the whole burst.
 - [lib/messaging/outgoing.ts](lib/messaging/outgoing.ts) — all outbound sends; writes the row before sending so failures stay visible
 - [lib/conversation/service.ts](lib/conversation/service.ts) — threads, modes, statuses, the Inbox queries
 - [lib/ai/context.ts](lib/ai/context.ts) — conversation memory (last 20 text messages)
@@ -90,13 +91,46 @@ conversation; resolving it and receiving another message starts a new one.
 `contacts.aiEnabled` is the *default* mode for new conversations. Both the Inbox
 mode toggle and the Contacts toggle write to both levels, so the two stay in sync.
 
+### Batched replies
+
+People type in bursts, so a reply answers a **burst**, not a message. An inbound
+message calls `scheduleAutoReply`, which writes a deadline to
+`conversations.autoReplyDueAt` and arms a timer; when it elapses, one
+`runAutoReply` answers everything unanswered. Answering per message produced
+replies that each saw a different partial history — and gave the same tool
+several chances to fire.
+
+Three things hold this together, and none of them is optional:
+
+- **What counts as unanswered is derived, never stored.** `buildContext`
+  (`lib/ai/context.ts`) splits the thread at the last thing *anyone else* said:
+  the trailing run of customer messages is the burst, everything before it is
+  history. So an operator replying by hand ends a burst exactly as an AI reply
+  does, and the split survives a restart. **Never add a cursor column for this.**
+- **The deadline is in the row as well as the timer.** The timer fires in the
+  normal case; the column is what lets `resumePendingReplies()` re-arm a window
+  that a restart interrupted. It is lazy, like `ensureSessionsReconciled()` —
+  see the `instrumentation.ts` note above. A window more than `STALE_AFTER_MS`
+  overdue is dropped rather than answered: waking up and answering everyone at
+  once is worse than leaving the thread in the Inbox.
+- **Anything that claims a thread must call `cancelAutoReply`.** Switching it to
+  human, resolving it, turning the contact's AI off, or replying by hand. The
+  flush would skip on `already_answered` anyway, but cancelling is what stops
+  the customer seeing a "typing…" indicator for a reply nobody will send.
+
+`system_settings.replyWindowSeconds` / `replyMaxWaitSeconds`
+(`lib/settings/reply-timing.ts`) are the knobs. The window is quiet time since
+the last message; the ceiling is measured from the *first* unanswered one, so
+someone typing non-stop is still answered. A window of `0` restores one reply
+per message.
+
 `system_settings.autoReplyMode` — `all` | `existing` | `off` — is the workspace
 gate above all of that (`lib/settings/auto-reply.ts`). `existing` is a damper,
 not a stop: threads already running on AI keep being answered, while anything
 opening from now on starts on human replies. That decision is written at
 conversation creation in `persistIncomingMessage`, *not* only checked at reply
 time, so it sticks for the whole thread; `runAutoReply` re-checks it because the
-policy can tighten between the webhook ack and the reply. Both halves are
+policy can tighten while the reply window is open. Both halves are
 needed — **changing one without the other silently breaks the mode.**
 
 `tools → bot_tools → ai_bots`. A tool's `fields` (JSON) drives three things at
@@ -122,6 +156,9 @@ rejected. One is fixed in the dashboard, the other by retrying.
 - No secrets or default credentials in code. Runtime state (`storage/`, `waha/data/`, `*.db`) is gitignored.
 - `waha/` is a separate deployment: never import from it, never assume it shares the app's `.env`, and keep app changes from requiring a gateway redeploy.
 - WAHA has two independent auth systems — browser basic auth for its dashboard, `X-Api-Key` for its REST API. Dashboard access grants no API access.
+- **`setTyping` is best-effort and must never throw.** It is cosmetic, older
+  WAHA builds have no `/presence` route, and losing the indicator is never a
+  reason to abandon the reply it was decorating.
 - **Tool results are never thrown.** `executeTool` returns `{ ok: false, error }`
   for a missing field or an unreachable sink, because the model reads that
   result and reacts to it — asking the customer for the missing email is the

@@ -24,6 +24,13 @@ export interface SendResult {
   error?: string
 }
 
+export interface SetTypingInput {
+  sessionId: string
+  /** Bare phone number (digits only). Converted to a chat id by the provider. */
+  phone: string
+  typing: boolean
+}
+
 export interface SessionInfo {
   id: string
   status: SessionStatus
@@ -33,7 +40,7 @@ export interface SessionInfo {
 
 /**
  * A provider-independent inbound message. Everything downstream of
- * `handleIncomingMessage` speaks this shape only.
+ * `persistIncomingMessage` speaks this shape only.
  */
 export interface IncomingMessage {
   provider: 'waha'
@@ -73,6 +80,15 @@ export interface WhatsAppProvider {
 
   /** Returns a `data:` URL for the pairing QR, or null when not pairing. */
   getQrCode(sessionId: string): Promise<string | null>
+
+  /**
+   * Shows or clears the "typing…" indicator in a chat.
+   *
+   * Cosmetic, and therefore best-effort: an implementation must resolve rather
+   * than throw when the transport cannot do it, because a missing indicator is
+   * never a reason to abandon a reply.
+   */
+  setTyping(input: SetTypingInput): Promise<void>
 
   /**
    * Resolves a `@lid` address to a bare phone number, or null when the

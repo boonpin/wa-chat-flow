@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { contacts, conversations } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
+import { cancelAutoReply } from '@/lib/messaging/reply-scheduler'
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -33,10 +34,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // The contact-level AI toggle is the default for new threads; apply it to the
   // open one too so the switch does what the operator expects right now.
   if (patch.aiEnabled !== undefined) {
+    const open = db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(and(eq(conversations.contactId, id), eq(conversations.status, 'open')))
+      .all()
+
     db.update(conversations)
       .set({ mode: patch.aiEnabled ? 'auto' : 'human', updatedAt: new Date().toISOString() })
       .where(and(eq(conversations.contactId, id), eq(conversations.status, 'open')))
       .run()
+
+    // Same reason as the Inbox toggle: a window already open would otherwise
+    // deliver one last AI reply after the switch was turned off.
+    if (!patch.aiEnabled) for (const row of open) cancelAutoReply(row.id)
   }
 
   const contact = db.select().from(contacts).where(eq(contacts.id, id)).get()

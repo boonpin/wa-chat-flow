@@ -5,6 +5,7 @@ import type {
   SendTextInput,
   SessionInfo,
   SessionStatus,
+  SetTypingInput,
   WhatsAppProvider,
 } from './types'
 
@@ -169,6 +170,25 @@ export class WahaProvider implements WhatsAppProvider {
       return { ok: true, providerMessageId: extractMessageId(result) }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  /**
+   * Drives the chat's presence so a held reply does not read as a dead bot.
+   *
+   * WAHA never sends `typing` on its own — the indicator has to be set before
+   * `sendText` and cleared afterwards. Failures are swallowed: older builds have
+   * no `/presence` route at all, and losing the indicator must never cost the
+   * reply it was decorating.
+   */
+  async setTyping({ sessionId, phone, typing }: SetTypingInput): Promise<void> {
+    try {
+      await request('POST', `/api/${encodeURIComponent(sessionId)}/presence`, {
+        chatId: toChatId(phone),
+        presence: typing ? 'typing' : 'paused',
+      })
+    } catch (err) {
+      console.warn(`[wa] Could not set presence for ${phone}:`, err instanceof Error ? err.message : err)
     }
   }
 

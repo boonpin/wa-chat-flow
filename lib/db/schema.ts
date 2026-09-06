@@ -61,6 +61,13 @@ export const conversations = sqliteTable(
     mode: text('mode').notNull().default('human'),
     status: text('status').notNull().default('open'), // open | resolved
     lastMessageAt: text('last_message_at'),
+    /**
+     * When the debounced AI reply for this thread is due, or null when none is
+     * owed. Persisted rather than kept in the timer alone so a restart during
+     * the hold window can pick the reply back up — see
+     * lib/messaging/reply-scheduler.ts.
+     */
+    autoReplyDueAt: text('auto_reply_due_at'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
@@ -68,6 +75,7 @@ export const conversations = sqliteTable(
     index('idx_conversations_contact').on(t.contactId),
     index('idx_conversations_status').on(t.status, t.lastMessageAt),
     index('idx_conversations_open').on(t.contactId, t.status),
+    index('idx_conversations_reply_due').on(t.autoReplyDueAt),
   ]
 )
 
@@ -107,6 +115,13 @@ export const systemSettings = sqliteTable('system_settings', {
    */
   autoReplyMode: text('auto_reply_mode').notNull().default('off'),
   defaultBotId: text('default_bot_id'),
+  /**
+   * How long to wait for the customer to stop typing before answering, and the
+   * hard ceiling on that wait. See lib/settings/reply-timing.ts — a window of
+   * zero restores one reply per message.
+   */
+  replyWindowSeconds: integer('reply_window_seconds').notNull().default(8),
+  replyMaxWaitSeconds: integer('reply_max_wait_seconds').notNull().default(45),
 })
 
 export const blastCampaigns = sqliteTable('blast_campaigns', {

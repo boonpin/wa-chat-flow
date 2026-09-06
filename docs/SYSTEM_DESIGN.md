@@ -62,11 +62,33 @@ duplicate, which also covers two concurrent deliveries of the same event.
 ### 3.2 Intelligent Message Routing
 Each incoming message runs through:
 1. **Deduplication:** Ignore an event already stored under the same provider message id.
-2. **System Filter:** Global auto-reply master switch.
-3. **Conversation Mode:** `auto` lets the AI answer; `human` leaves the thread to an operator.
-4. **Bot Selection:** Conversation bot → contact bot → system default → the bot flagged default. Disabled bots are skipped.
-5. **Context:** The bot prompt plus the last ~20 text messages of that conversation.
-6. **Tools:** Whatever the selected bot has been assigned, capped at 3 call rounds per reply.
+2. **Reply Window:** The message opens or extends a debounce window on its thread rather than triggering a reply of its own (see 3.3).
+3. **System Filter:** Global auto-reply master switch.
+4. **Conversation Mode:** `auto` lets the AI answer; `human` leaves the thread to an operator.
+5. **Bot Selection:** Conversation bot → contact bot → system default → the bot flagged default. Disabled bots are skipped.
+6. **Context:** The bot prompt plus the last ~20 text messages of that conversation.
+7. **Tools:** Whatever the selected bot has been assigned, capped at 3 call rounds per reply.
+
+### 3.3 Batched Replies
+People send one question as three messages. Answering each as it lands produced
+three replies that had each seen a different, partial conversation — and gave
+the same tool three chances to fire.
+
+So a reply answers a burst. An inbound message writes a deadline to
+`conversations.auto_reply_due_at` and arms a timer; every further message
+restarts it, up to a ceiling measured from the first unanswered message. When it
+elapses, one reply covers everything said in the window, and the customer sees a
+typing indicator while it is written.
+
+What counts as unanswered is derived rather than stored: the trailing run of
+customer messages, split off at the last thing anyone else said. That makes an
+operator's own reply end a burst exactly as the bot's would, and it survives a
+restart. The deadline is kept in the row as well as the timer so a restart
+mid-window resumes instead of dropping the reply — bounded, so a service that
+was down for hours does not wake up and answer everyone at once.
+
+Operators control the wait and its ceiling in **Reply settings**; a wait of zero
+restores one reply per message.
 
 ### 3.6 Tools
 A bot can be given tools it may call mid-conversation. The only kind today is
@@ -105,7 +127,7 @@ queue system is required.
 
 ![Contact Assignment](./screenshots/05-contacts.png)
 
-### 3.3 WhatsApp Session Lifecycle
+### 3.7 WhatsApp Session Lifecycle
 - **QR Code Authentication:** WAHA renders the pairing code; the dashboard fetches and displays it.
 - **State Persistence:** Sessions live in WAHA's own storage, so they survive app restarts and redeploys.
 - **Live Monitoring:** Status is read from the gateway on demand and pushed by `session.status` webhooks.
