@@ -90,6 +90,15 @@ conversation; resolving it and receiving another message starts a new one.
 `contacts.aiEnabled` is the *default* mode for new conversations. Both the Inbox
 mode toggle and the Contacts toggle write to both levels, so the two stay in sync.
 
+`system_settings.autoReplyMode` — `all` | `existing` | `off` — is the workspace
+gate above all of that (`lib/settings/auto-reply.ts`). `existing` is a damper,
+not a stop: threads already running on AI keep being answered, while anything
+opening from now on starts on human replies. That decision is written at
+conversation creation in `persistIncomingMessage`, *not* only checked at reply
+time, so it sticks for the whole thread; `runAutoReply` re-checks it because the
+policy can tighten between the webhook ack and the reply. Both halves are
+needed — **changing one without the other silently breaks the mode.**
+
 `tools → bot_tools → ai_bots`. A tool's `fields` (JSON) drives three things at
 once: the JSON Schema the model sees, the server-side validation, and the sheet
 column order — so sales and support capture are two **rows**, not two code

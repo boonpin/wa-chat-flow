@@ -81,7 +81,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
   }
 
-  const conversation = getOrCreateOpenConversation({
+  const { conversation } = getOrCreateOpenConversation({
     contactId: contact.id,
     waSessionId: contact.waSessionId,
     defaultMode: contact.aiEnabled ? 'auto' : 'human',

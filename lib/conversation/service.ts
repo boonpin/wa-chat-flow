@@ -11,6 +11,12 @@ export type ConversationStatus = 'open' | 'resolved'
  * Conversations sit between contacts and messages. A contact has at most one
  * open conversation at a time; resolving it and writing again starts a new one,
  * which keeps history readable as discrete threads.
+ *
+ * `opened` reports whether this call started the thread. Auto-reply policy
+ * turns on that distinction — under `existing` a thread that was already
+ * running keeps its AI replies while one opening right now does not get them —
+ * and the caller cannot recover it afterwards, because a conversation created a
+ * millisecond ago and one created last week look identical on read.
  */
 export function getOrCreateOpenConversation(input: {
   contactId: string
@@ -18,7 +24,7 @@ export function getOrCreateOpenConversation(input: {
   /** Mode applied only when a new conversation is created. */
   defaultMode: ConversationMode
   defaultBotId?: string | null
-}): Conversation {
+}): { conversation: Conversation; opened: boolean } {
   const existing = db
     .select()
     .from(conversations)
@@ -26,7 +32,7 @@ export function getOrCreateOpenConversation(input: {
     .orderBy(desc(conversations.lastMessageAt))
     .get()
 
-  if (existing) return existing
+  if (existing) return { conversation: existing, opened: false }
 
   const now = new Date().toISOString()
   const conversation: Conversation = {
@@ -42,7 +48,7 @@ export function getOrCreateOpenConversation(input: {
   }
 
   db.insert(conversations).values(conversation).run()
-  return conversation
+  return { conversation, opened: true }
 }
 
 export function getConversation(id: string): Conversation | undefined {

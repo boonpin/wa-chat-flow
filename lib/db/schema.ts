@@ -100,7 +100,12 @@ export const messages = sqliteTable(
 
 export const systemSettings = sqliteTable('system_settings', {
   id: text('id').primaryKey(),
-  autoReplyEnabled: integer('auto_reply_enabled', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * How much of the workspace the AI answers: `all`, `existing` or `off`.
+   * See lib/settings/auto-reply.ts — `existing` is the damper that keeps
+   * running threads on AI while opening every new one on human replies.
+   */
+  autoReplyMode: text('auto_reply_mode').notNull().default('off'),
   defaultBotId: text('default_bot_id'),
 })
 

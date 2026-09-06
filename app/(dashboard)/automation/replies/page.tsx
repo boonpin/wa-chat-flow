@@ -13,19 +13,24 @@ import {
   Panel,
   PanelBody,
   PanelHeader,
+  RadioCards,
   Select,
   Skeleton,
   StatusFact,
-  Switch,
   errorMessage,
   request,
   useAsyncData,
   useToast,
 } from '@/components/ui'
 import { resolveFallbackBot, useWorkspaceStatus, type BotSummary } from '@/components/workspace-status'
+import {
+  AUTO_REPLY_MODES,
+  AUTO_REPLY_MODE_COPY,
+  type AutoReplyMode,
+} from '@/lib/settings/auto-reply'
 
 interface Settings {
-  autoReplyEnabled: boolean
+  autoReplyMode: AutoReplyMode
   defaultBotId: string | null
 }
 
@@ -70,6 +75,7 @@ export default function ReplySettingsPage() {
   const fallback = resolveFallbackBot(
     data ? { channels: [], settings: data.settings, bots: data.bots } : null
   )
+  const savedPolicy = AUTO_REPLY_MODE_COPY[saved?.autoReplyMode ?? 'off'] ?? AUTO_REPLY_MODE_COPY.off
   const draftBot = draft?.defaultBotId ? bots.find((b) => b.id === draft.defaultBotId) : null
 
   async function save() {
@@ -97,7 +103,7 @@ export default function ReplySettingsPage() {
     <PageBody width="form">
       <PageHeader
         title="Reply settings"
-        description="One switch decides whether the AI is allowed to answer at all, and one bot answers whatever has no bot of its own."
+        description="One policy decides how much the AI is allowed to answer, and one bot answers whatever has no bot of its own."
         back={{ href: '/settings', label: 'Settings' }}
       />
 
@@ -122,8 +128,8 @@ export default function ReplySettingsPage() {
             <PanelHeader title="Currently saved" />
             <PanelBody className="grid gap-4 sm:grid-cols-2">
               <StatusFact label="AI replies">
-                <Badge variant={saved.autoReplyEnabled ? 'success' : 'warning'} dot>
-                  {saved.autoReplyEnabled ? 'Enabled' : 'Paused'}
+                <Badge variant={savedPolicy.tone} dot>
+                  {savedPolicy.label}
                 </Badge>
               </StatusFact>
               <StatusFact label="Default bot">
@@ -151,34 +157,40 @@ export default function ReplySettingsPage() {
           )}
 
           <FormSection
-            title="Allow AI replies"
-            scope="Applies to every number and every conversation set to AI replies."
+            title="How much the AI answers"
+            scope="Applies to every number. Messages always arrive and you can always reply by hand; campaigns are unaffected."
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-ink">AI may answer incoming messages</p>
-                <p className="mt-0.5 text-sm leading-5 text-ink-muted">
-                  When this is off, messages still arrive and you can still reply by hand.
-                  Campaigns are unaffected.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                {dirty && draft.autoReplyEnabled !== saved.autoReplyEnabled && (
-                  <Badge variant="warning">Unsaved</Badge>
-                )}
-                <Switch
-                  checked={draft.autoReplyEnabled}
-                  onChange={(v) => setEdits({ ...draft, autoReplyEnabled: v })}
-                  label="Allow AI replies across the workspace"
-                />
-              </div>
-            </div>
+            <RadioCards<AutoReplyMode>
+              legend="How much the AI answers"
+              hideLegend
+              value={draft.autoReplyMode}
+              onChange={(mode) => setEdits({ ...draft, autoReplyMode: mode })}
+              options={AUTO_REPLY_MODES.map((mode) => ({
+                value: mode,
+                label: AUTO_REPLY_MODE_COPY[mode].label,
+                detail: AUTO_REPLY_MODE_COPY[mode].detail,
+                badge:
+                  dirty && draft.autoReplyMode === mode && saved.autoReplyMode !== mode ? (
+                    <Badge variant="warning">Unsaved</Badge>
+                  ) : undefined,
+              }))}
+            />
 
-            {!draft.autoReplyEnabled && (
-              <Banner tone="warning" title="What pausing does">
+            {draft.autoReplyMode === 'existing' && (
+              <Banner tone="warning" title="Nobody new gets an automatic reply">
+                A conversation that opens from now on starts on human replies and stays there until
+                you switch it over in Inbox — the second and third message are not answered either.
+                Conversations already running on AI are untouched. Customers who write in for the
+                first time during this period keep AI off afterwards too; switch them on in Contacts
+                when you want them answered.
+              </Banner>
+            )}
+
+            {draft.autoReplyMode === 'off' && (
+              <Banner tone="warning" title="What turning it off does">
                 No conversation receives an automatic reply, even one set to AI and even for a
-                customer whose contact has AI switched on. Turning this back on later does not
-                change any conversation that has since been set to human replies.
+                customer whose contact has AI switched on. Turning it back on later does not change
+                any conversation that has since been set to human replies.
               </Banner>
             )}
           </FormSection>
@@ -227,7 +239,7 @@ export default function ReplySettingsPage() {
                 <Link href="/bots/new" className="font-medium text-action hover:underline">
                   Create one
                 </Link>{' '}
-                before enabling AI replies.
+                before turning AI replies on.
               </p>
             )}
           </FormSection>
@@ -239,7 +251,12 @@ export default function ReplySettingsPage() {
                 {[
                   {
                     label: 'AI replies are allowed here',
-                    detail: 'The switch above. If it is off, nothing below runs.',
+                    detail: 'The policy above. If it is off, nothing below runs.',
+                  },
+                  {
+                    label: 'The conversation is old enough to qualify',
+                    detail:
+                      'On “existing conversations only”, a thread that opens now starts on human replies instead.',
                   },
                   {
                     label: 'The conversation is set to AI replies',

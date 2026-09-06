@@ -28,6 +28,7 @@ import {
   countConnected,
   useWorkspaceStatus,
 } from '@/components/workspace-status'
+import { AUTO_REPLY_MODE_COPY } from '@/lib/settings/auto-reply'
 
 interface NavItem {
   href: string
@@ -151,7 +152,7 @@ function ConnectionSummary() {
 
   const total = status.channels.length
   const connected = countConnected(status.channels)
-  const aiOn = status.settings.autoReplyEnabled
+  const replyPolicy = AUTO_REPLY_MODE_COPY[status.settings.autoReplyMode] ?? AUTO_REPLY_MODE_COPY.off
   const needsAttention = total === 0 || connected < total
 
   return (
@@ -171,7 +172,7 @@ function ConnectionSummary() {
           : `${connected} of ${total} numbers reported connected`}
       </span>
       <span className="mt-1 block text-xs text-ink-soft">
-        AI replies {aiOn ? 'enabled' : 'paused'}
+        AI replies {replyPolicy.short}
       </span>
     </Link>
   )

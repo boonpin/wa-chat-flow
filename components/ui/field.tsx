@@ -262,6 +262,78 @@ export function Switch({
   )
 }
 
+/**
+ * A single choice among a few, where each option needs a sentence of its own to
+ * be chosen correctly — a policy, not a preference. Native radios inside one
+ * fieldset, so arrow keys, the accessible name and the grouping all come for
+ * free; the card is only paint on top of them.
+ */
+export function RadioCards<T extends string>({
+  legend,
+  hideLegend,
+  value,
+  onChange,
+  options,
+  disabled,
+  className = '',
+}: {
+  /** Full accessible name for the group, e.g. "How much the AI answers". */
+  legend: string
+  /** Hide it visually only where an adjacent heading already says the same. */
+  hideLegend?: boolean
+  value: T
+  onChange: (next: T) => void
+  options: { value: T; label: string; detail?: ReactNode; badge?: ReactNode }[]
+  disabled?: boolean
+  className?: string
+}) {
+  const name = useId()
+
+  return (
+    <fieldset className={`m-0 min-w-0 border-0 p-0 ${className}`} disabled={disabled}>
+      <legend className={hideLegend ? 'sr-only' : 'mb-2 text-sm font-medium text-ink'}>
+        {legend}
+      </legend>
+      <div className="space-y-2">
+        {options.map((option) => {
+          const selected = option.value === value
+          return (
+            <label
+              key={option.value}
+              className={`flex items-start gap-3 rounded-md border p-3 transition-colors
+                duration-[--duration-control] ease-out
+                ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}
+                ${selected ? 'border-action bg-selected' : `border-line ${disabled ? '' : 'hover:bg-hover'}`}`}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={option.value}
+                checked={selected}
+                disabled={disabled}
+                onChange={() => onChange(option.value)}
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[var(--color-action-primary)]
+                  disabled:cursor-not-allowed"
+              />
+              <span className="min-w-0">
+                <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+                  {option.label}
+                  {option.badge}
+                </span>
+                {option.detail && (
+                  <span className="mt-0.5 block text-sm leading-5 text-ink-muted">
+                    {option.detail}
+                  </span>
+                )}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+    </fieldset>
+  )
+}
+
 export function Checkbox({
   checked,
   onChange,

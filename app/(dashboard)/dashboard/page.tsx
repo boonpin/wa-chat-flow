@@ -30,6 +30,7 @@ import {
   resolveFallbackBot,
   useWorkspaceStatus,
 } from '@/components/workspace-status'
+import { AUTO_REPLY_MODE_COPY, repliesToExisting } from '@/lib/settings/auto-reply'
 
 interface ConversationRow {
   id: string
@@ -107,10 +108,12 @@ export default function OverviewPage() {
   const channels = status?.channels ?? []
   const connected = countConnected(channels)
   const bots = status?.bots ?? []
-  const aiEnabled = status?.settings.autoReplyEnabled ?? false
+  const autoReplyMode = status?.settings.autoReplyMode ?? 'off'
+  const replyPolicy = AUTO_REPLY_MODE_COPY[autoReplyMode] ?? AUTO_REPLY_MODE_COPY.off
+  const aiAnswersSomething = repliesToExisting(autoReplyMode)
   const openCount = conversations.data?.length ?? 0
 
-  const setupComplete = bots.length > 0 && connected > 0 && aiEnabled
+  const setupComplete = bots.length > 0 && connected > 0 && aiAnswersSomething
 
   /* Known blockers, most actionable first. A number that is offline is more
      urgent than a default bot that has not been chosen. */
@@ -168,10 +171,21 @@ export default function OverviewPage() {
       })
     }
 
-    if (!aiEnabled) {
+    if (autoReplyMode === 'off') {
       issues.push({
-        title: 'AI replies are paused',
+        title: 'AI replies are off',
         detail: 'Messages still arrive and you can still reply manually.',
+        href: '/automation/replies',
+        cta: 'Review',
+        tone: 'warning',
+      })
+    } else if (autoReplyMode === 'existing') {
+      // A deliberate setting, listed anyway: it is the one policy that looks
+      // like everything is working while every new customer goes unanswered.
+      issues.push({
+        title: 'New conversations are not answered automatically',
+        detail:
+          'AI replies are limited to conversations that were already running. Anyone writing in for the first time waits for a person.',
         href: '/automation/replies',
         cta: 'Review',
         tone: 'warning',
@@ -236,9 +250,9 @@ export default function OverviewPage() {
                   cta="Connect number"
                 />
                 <ChecklistItem
-                  done={aiEnabled}
-                  title="Enable AI replies"
-                  detail="Turns on automatic replies for conversations that are set to AI."
+                  done={aiAnswersSomething}
+                  title="Turn on AI replies"
+                  detail="Chooses how much the AI answers: everything, only conversations already running, or nothing."
                   href="/automation/replies"
                   cta="Open settings"
                 />
@@ -394,15 +408,15 @@ export default function OverviewPage() {
               <div>
                 <p className="text-xs text-ink-soft">AI replies</p>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <Badge variant={aiEnabled ? 'success' : 'warning'} dot>
-                    {aiEnabled ? 'Enabled' : 'Paused'}
+                  <Badge variant={replyPolicy.tone} dot>
+                    {replyPolicy.label}
                   </Badge>
                   <Link href="/automation/replies" className="text-[13px] font-medium text-action hover:underline">
                     Change
                   </Link>
                 </div>
                 <p className="mt-1.5 text-xs leading-4 text-ink-soft">
-                  This gates automatic replies only. Manual replies and campaigns are unaffected.
+                  {replyPolicy.detail} Manual replies and campaigns are unaffected.
                 </p>
               </div>
 

@@ -14,6 +14,7 @@ import { resolveHandler } from '@/lib/ai/handler'
 import { resolveTools } from '@/lib/tools/registry'
 import { selectBot } from './bot-selection'
 import { sendOutgoingMessage } from './outgoing'
+import { repliesToExisting, repliesToNew, type AutoReplyMode } from '@/lib/settings/auto-reply'
 import type { IncomingMessage } from '@/lib/wa/types'
 import type { ToolRun } from '@/lib/tools/types'
 
@@ -34,13 +35,24 @@ export interface PersistedIncoming {
   incoming: IncomingMessage
   contact: Contact
   conversation: Conversation
+  /** True when this message opened the thread rather than continuing one. */
+  openedConversation: boolean
   storedMessageId: string
 }
 
 export type PersistResult = PersistedIncoming | { status: 'duplicate' }
 
 export type AutoReplyOutcome =
-  | { status: 'skipped'; reason: 'auto_reply_disabled' | 'human_mode' | 'no_bot' | 'unsupported_type' | 'empty_reply' }
+  | {
+      status: 'skipped'
+      reason:
+        | 'auto_reply_disabled'
+        | 'new_conversation'
+        | 'human_mode'
+        | 'no_bot'
+        | 'unsupported_type'
+        | 'empty_reply'
+    }
   | { status: 'replied'; messageId: string }
   | { status: 'failed'; error: string }
 
@@ -70,10 +82,18 @@ export function persistIncomingMessage(incoming: IncomingMessage): PersistResult
   })
 
   // ─── 3. Conversation ────────────────────────────────────────────────────────
-  const conversation = getOrCreateOpenConversation({
+  // The mode a new thread opens on is where `existing` does its work: the
+  // customer's own AI default only applies while the workspace is fully
+  // automatic. Writing 'human' here rather than skipping the reply later makes
+  // the decision stick — the second and third message on that thread are not
+  // answered either — and shows an operator in the Inbox exactly why.
+  const settings = db.select().from(systemSettings).where(eq(systemSettings.id, 'default')).get()
+  const autoReplyMode = (settings?.autoReplyMode ?? 'off') as AutoReplyMode
+
+  const { conversation, opened: openedConversation } = getOrCreateOpenConversation({
     contactId: contact.id,
     waSessionId: incoming.sessionId,
-    defaultMode: contact.aiEnabled ? 'auto' : 'human',
+    defaultMode: contact.aiEnabled && repliesToNew(autoReplyMode) ? 'auto' : 'human',
     defaultBotId: contact.aiBotId,
   })
 
@@ -111,21 +131,29 @@ export function persistIncomingMessage(incoming: IncomingMessage): PersistResult
     `[wa] [IN] ${contact.name || contact.phoneNumber}: ${incoming.text ?? `<${incoming.type}>`}`
   )
 
-  return { status: 'stored', incoming, contact, conversation, storedMessageId }
+  return { status: 'stored', incoming, contact, conversation, openedConversation, storedMessageId }
 }
 
 /** Steps 5–8: decide whether the AI answers, and answer. */
 export async function runAutoReply(persisted: PersistedIncoming): Promise<AutoReplyOutcome> {
-  const { incoming, contact, storedMessageId } = persisted
+  const { incoming, contact, openedConversation, storedMessageId } = persisted
 
   const settings = db.select().from(systemSettings).where(eq(systemSettings.id, 'default')).get()
+  const autoReplyMode = (settings?.autoReplyMode ?? 'off') as AutoReplyMode
 
   // Re-read the conversation: this runs after the webhook was acked, so an
   // operator may have taken the thread off auto in the meantime.
   const conversation = getConversation(persisted.conversation.id) ?? persisted.conversation
 
   // ─── 5. Should the AI answer at all? ────────────────────────────────────────
-  if (!settings?.autoReplyEnabled) return { status: 'skipped', reason: 'auto_reply_disabled' }
+  if (!repliesToExisting(autoReplyMode)) return { status: 'skipped', reason: 'auto_reply_disabled' }
+
+  // Re-read for the same reason as the mode: the policy can tighten between the
+  // ack and here, and a thread this very message opened is not an existing one.
+  if (openedConversation && !repliesToNew(autoReplyMode)) {
+    return { status: 'skipped', reason: 'new_conversation' }
+  }
+
   if (conversation.mode !== 'auto') return { status: 'skipped', reason: 'human_mode' }
 
   // Media carries no text to reason about — leave those for a human.
@@ -136,7 +164,7 @@ export async function runAutoReply(persisted: PersistedIncoming): Promise<AutoRe
   const bot = selectBot({
     conversationBotId: conversation.botId,
     contactBotId: contact.aiBotId,
-    settingsDefaultBotId: settings.defaultBotId,
+    settingsDefaultBotId: settings?.defaultBotId,
   })
   if (!bot) return { status: 'skipped', reason: 'no_bot' }
 

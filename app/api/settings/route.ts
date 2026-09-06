@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { systemSettings, aiBots } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
+import { AUTO_REPLY_MODES, isAutoReplyMode, type AutoReplyMode } from '@/lib/settings/auto-reply'
 
 export async function GET() {
   const session = await getSession()
@@ -19,8 +20,20 @@ export async function PUT(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
 
   // Whitelist: never spread a request body straight into an update.
-  const patch: { autoReplyEnabled?: boolean; defaultBotId?: string | null } = {}
-  if (typeof body.autoReplyEnabled === 'boolean') patch.autoReplyEnabled = body.autoReplyEnabled
+  const patch: { autoReplyMode?: AutoReplyMode; defaultBotId?: string | null } = {}
+
+  if ('autoReplyMode' in body) {
+    // Rejected rather than coerced: an unrecognised value would otherwise be
+    // stored and then read back as the most permissive branch of the policy.
+    if (!isAutoReplyMode(body.autoReplyMode)) {
+      return NextResponse.json(
+        { error: `autoReplyMode must be one of: ${AUTO_REPLY_MODES.join(', ')}` },
+        { status: 400 }
+      )
+    }
+    patch.autoReplyMode = body.autoReplyMode
+  }
+
   if ('defaultBotId' in body) patch.defaultBotId = body.defaultBotId || null
 
   if (patch.defaultBotId) {

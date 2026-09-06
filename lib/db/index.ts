@@ -40,7 +40,9 @@ function seedDefaults(sqlite: Database.Database) {
   const existingSettings = sqlite.prepare('SELECT id FROM system_settings WHERE id = ?').get('default')
   if (!existingSettings) {
     sqlite
-      .prepare('INSERT INTO system_settings (id, auto_reply_enabled, default_bot_id) VALUES (?, 0, NULL)')
+      .prepare(
+        "INSERT INTO system_settings (id, auto_reply_mode, default_bot_id) VALUES (?, 'off', NULL)"
+      )
       .run('default')
   }
 

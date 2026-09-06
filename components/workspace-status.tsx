@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, type ReactNode } from 'react'
 import { request, useAsyncData } from '@/components/ui'
 import type { ChannelStatus } from '@/components/ui'
+import type { AutoReplyMode } from '@/lib/settings/auto-reply'
 
 /**
  * The three facts that decide whether an automatic reply can happen at all:
@@ -29,7 +30,7 @@ export interface BotSummary {
 }
 
 export interface ReplySettings {
-  autoReplyEnabled: boolean
+  autoReplyMode: AutoReplyMode
   defaultBotId: string | null
 }
 
@@ -69,7 +70,7 @@ export function WorkspaceStatusProvider({ children }: { children: ReactNode }) {
     ])
     return {
       channels: Array.isArray(channels) ? channels : [],
-      settings: settings ?? { autoReplyEnabled: false, defaultBotId: null },
+      settings: settings ?? { autoReplyMode: 'off', defaultBotId: null },
       bots: Array.isArray(bots) ? bots : [],
     }
   }, [])

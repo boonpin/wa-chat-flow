@@ -243,7 +243,7 @@ function Thread({
   const channel = workspace?.channels.find((c) => c.id === conversation.waSessionId) ?? null
 
   const blockers = deriveBlockers({
-    globalAiEnabled: workspace?.settings.autoReplyEnabled ?? false,
+    autoReplyMode: workspace?.settings.autoReplyMode ?? 'off',
     mode: conversation.mode,
     channelStatus: (channel?.status ?? (conversation.waSessionId ? 'unknown' : null)) as ChannelStatus | null,
     botName: effectiveBot?.name ?? null,

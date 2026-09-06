@@ -2,14 +2,17 @@ import { db } from '@/lib/db'
 import { contacts, systemSettings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
+import { repliesToNew, type AutoReplyMode } from '@/lib/settings/auto-reply'
 
 export type Contact = typeof contacts.$inferSelect
 
 /**
  * Looks up a contact by phone number, creating it on first contact.
  *
- * New contacts inherit the global auto-reply setting so that turning the system
- * on applies to people who have not written in yet.
+ * A new contact is set to AI replies only while the workspace is fully
+ * automatic. Under `existing` the whole point is that nobody new is answered
+ * automatically, so a first-time customer arrives with AI off — the same as
+ * when auto-reply is off entirely.
  */
 export function findOrCreateContact(input: {
   phone: string
@@ -41,7 +44,7 @@ export function findOrCreateContact(input: {
     id: uuidv4(),
     phoneNumber: input.phone,
     name: input.name ?? input.phone,
-    aiEnabled: settings?.autoReplyEnabled ?? false,
+    aiEnabled: repliesToNew((settings?.autoReplyMode ?? 'off') as AutoReplyMode),
     aiBotId: null,
     waSessionId: input.waSessionId ?? null,
     createdAt: now,

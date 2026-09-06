@@ -4,6 +4,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Badge, ChannelTag, type BadgeVariant } from './badge'
 import { AlertTriangleIcon } from './icons'
+import { repliesToExisting, type AutoReplyMode } from '@/lib/settings/auto-reply'
 
 /* ─── Vocabulary ──────────────────────────────────────────────────────────────
    Six independent dimensions. A green toggle in one of them is never allowed to
@@ -205,7 +206,7 @@ export function ReplyStatusLine({
    ─────────────────────────────────────────────────────────────────────────── */
 
 export function deriveBlockers(input: {
-  globalAiEnabled: boolean
+  autoReplyMode: AutoReplyMode
   mode?: 'auto' | 'human' | null
   channelStatus?: ChannelStatus | null
   botName?: string | null
@@ -225,9 +226,11 @@ export function deriveBlockers(input: {
   }
 
   if (input.mode === 'auto') {
-    if (!input.globalAiEnabled) {
+    // `existing` is deliberately not a blocker here: this thread is already
+    // running, which is exactly what that policy keeps answering.
+    if (!repliesToExisting(input.autoReplyMode)) {
       blockers.push({
-        message: 'AI replies are paused for the whole workspace. You can still reply manually.',
+        message: 'AI replies are off for the whole workspace. You can still reply manually.',
         action: { label: 'Review reply settings', href: '/automation/replies' },
       })
     } else if (!input.botName) {
