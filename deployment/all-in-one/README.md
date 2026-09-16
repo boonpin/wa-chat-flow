@@ -1,0 +1,229 @@
+# All-in-one deployment
+
+Both services — WA Chat Flow and the WAHA gateway — in **one compose project
+with one `.env`**. Use this when app and gateway live on the same box and you
+want a single `docker compose up` to bring the whole thing online.
+
+The split deployment at the repository root (`docker-compose.yml` +
+`waha/docker-compose.yml`) is still the right choice when the gateway has its
+own lifecycle: a separate host, a separate upgrade cadence, or several apps
+sharing one gateway. **Pick one.** Running both against the same machine gives
+you two containers fighting over port 3000 and two copies of the session store.
+
+```
+                        ┌─────────────────────────────────┐
+  Internet ──► :3000 ───►  app          ──►  waha          │
+                        │  data/app          data/waha     │
+                        └─────────────────────────────────┘
+                              compose network (private)
+```
+
+WAHA is **not** published to the host. Anyone who can reach its API can read
+your chats and send messages from your number; the app reaches it by service
+name over the compose network, so nothing else needs to.
+
+## Quick start
+
+Nothing is built here — the app runs a prebuilt image from the registry, so the
+deployment host needs this directory and Docker, not a source checkout.
+
+```bash
+cd deployment/all-in-one
+
+./init.sh               # creates .env with generated secrets, and data/
+$EDITOR .env            # set APP_URL, change ADMIN_PASSWORD — see below
+docker compose up -d
+```
+
+`init.sh` writes `.env` from `.env.example` and fills in every secret that is
+still blank, so there is nothing to generate by hand:
+
+| Filled in | With |
+| --- | --- |
+| `JWT_SECRET`, `WAHA_API_KEY`, `WAHA_WEBHOOK_HMAC_KEY`, `WAHA_DASHBOARD_PASSWORD` | a fresh `openssl rand -hex 32` each |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | `admin@example.com` / `admin` |
+
+It is safe to re-run: **a value already in `.env` is never overwritten**, so the
+way to pick your own secret is to put it there first and then run `init.sh`.
+
+Then open `APP_URL`, log in, go to the WhatsApp page and press **Connect** to
+scan the QR code.
+
+### Change the admin password
+
+`admin` is a default credential on a dashboard that can send messages from your
+WhatsApp number, and this host is internet-facing by design. Change
+`ADMIN_PASSWORD` in `.env` **before** exposing it.
+
+Note the account is created on first boot only — editing `ADMIN_PASSWORD` after
+that does **not** rotate it. To change it later, from a checkout:
+
+```bash
+ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='a-strong-password' pnpm seed
+```
+
+`ADMIN_EMAIL` has to look like an address even though it is only an identifier:
+the login form is `<input type="email" required>`, so a browser will not submit
+a bare `admin`. `pnpm seed` also enforces an 8-character minimum, which the
+`admin` default does not meet — the app's own first-boot path does not, which is
+why the default works at all.
+
+If the image is private, authenticate once on the host first — a GitHub personal
+access token with `read:packages`:
+
+```bash
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u boonpin --password-stdin
+```
+
+## Building the image
+
+From a checkout, on your machine — not on the deployment host:
+
+```bash
+./docker-build.mjs                          # build wa-chat-flow:local only
+./docker-build.mjs --push                   # build, push :latest
+./docker-build.mjs --push --tag=2609161214  # push an immutable build number
+./docker-build.mjs --push --tag=latest,2609161214
+```
+
+The script prints its `BUILD_NUMBER` (`yymmddhhmm`) as it starts — that is the
+tag worth pushing alongside `latest`, because it is the one you can roll back
+to. It also stamps the build into the image as OCI labels, so a running
+container can always tell you what it is:
+
+```bash
+docker inspect wa-chat-flow-app-1 \
+  --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
+```
+
+Building on Apple Silicon for an x86 VPS needs `--platform=linux/amd64`;
+without it the image matches your Mac and dies on the server with
+`exec format error`.
+
+To run an image you built but never pushed, set `APP_IMAGE=wa-chat-flow` and
+`APP_IMAGE_TAG=local` — that is the script's `LOCAL_TAG`, so no registry is
+involved.
+
+## Configuration
+
+Everything lives in one `.env` here. Generate each secret with
+`openssl rand -hex 32`.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `APP_IMAGE` / `APP_IMAGE_TAG` | no | Which image to run. Defaults to `ghcr.io/boonpin/wa-chat-flow:latest`. Pin the tag for a rollback-able deploy. |
+| `APP_URL` | yes | Public URL people open in a browser. Not how the containers find each other. |
+| `APP_BIND` / `APP_PORT` | no | Host interface and port. Behind a TLS proxy on this box, set `APP_BIND=127.0.0.1`. |
+| `JWT_SECRET` | **yes** | Signs the session cookie. Changing it logs everyone out. Generated by `init.sh`. |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | first run | Bootstrap admin, created once. Defaults to `admin@example.com` / `admin` — **change the password**. Later edits do **not** rotate it; use `pnpm seed`. |
+| `WAHA_API_KEY` | **yes** | Protects WAHA's REST API. Read by both services from this one line. |
+| `WAHA_WEBHOOK_HMAC_KEY` | **yes in practice** | Signs webhook deliveries. Empty turns the check off — see below. |
+| `WAHA_DASHBOARD_USERNAME` / `_PASSWORD` | **yes** | Browser basic auth for WAHA's own dashboard. Unrelated to `WAHA_API_KEY`. |
+| `OPENAI_API_KEY` / `GEMINI_API_KEY` | no | Fallback keys, used only by an AI provider row that has no key of its own. |
+
+`init.sh` fills all four of those in, so the usual failure modes do not arise.
+They are worth understanding anyway: compose refuses to start when
+`WAHA_API_KEY` or `WAHA_DASHBOARD_PASSWORD` is missing, so those fail loudly.
+`WAHA_WEBHOOK_HMAC_KEY` does not — the webhook route is public by design (WAHA
+has no session cookie) and that signature is the only thing standing between the
+internet and the message handler. Blanking it is a working configuration and a
+bad one.
+
+`WAHA_BASE_URL` and `WAHA_WEBHOOK_URL` are **not** in `.env`. This topology
+fixes them (`http://waha:3000` and `http://app:3000/api/webhooks/waha`), so
+they are set in the compose file where editing them cannot silently break the
+wiring. Note the webhook URL is resolved *inside the WAHA container*, where
+`localhost` means WAHA itself — which is why it is a service name and not
+`APP_URL`.
+
+## Why `init.sh` creates the directories
+
+Docker creates a missing bind-mount source as `root:root`. WAHA runs as root and
+does not care, but the app image runs as the unprivileged `nextjs` user (uid
+1001) and would fail to open its SQLite database. `init.sh` pre-creates
+`data/app` with that owner, and on Linux tells you the exact `chown` to run if
+it cannot do it itself.
+
+Skipping it produces `SQLITE_CANTOPEN` in `docker compose logs app`.
+
+## Data and backups
+
+```
+data/app/app.db          SQLite — contacts, conversations, messages, campaigns
+data/waha/sessions/      WhatsApp logins (a Chromium profile each, multi-GB)
+data/waha/media/         downloaded attachments
+```
+
+Both are gitignored and excluded from the Docker build context — the build
+context is the repository root, so a stray Chromium profile would otherwise be
+uploaded to the daemon on every rebuild.
+
+Losing `data/waha/sessions` means re-scanning the QR code, so back it up
+alongside the database. From the repository root:
+
+```bash
+WAHA_STORAGE_DIR=deployment/all-in-one/data/waha \
+DATA_DIR=deployment/all-in-one/data/app \
+pnpm backup
+```
+
+`pnpm backup` uses SQLite's online backup API, so it is safe against the live
+WAL-mode database — unlike copying the file, which can catch a torn write.
+
+## Operating
+
+```bash
+docker compose ps
+docker compose logs -f app
+docker compose logs -f waha
+
+docker compose pull app && docker compose up -d app     # upgrade the app
+docker compose pull waha && docker compose up -d waha   # upgrade the gateway
+docker compose down                   # stop; data/ survives
+```
+
+Upgrading the app is a pull, not a build. On a pinned tag, edit `APP_IMAGE_TAG`
+in `.env` and run those two commands; rolling back is the same move with the
+previous build number. On `latest`, `docker compose pull app` is enough — but
+note `latest` gives you nothing to roll back *to*, which is the argument for
+pinning.
+
+Database migrations run automatically when the app boots — there is no separate
+migrate step. That means **an upgrade migrates on start**, so take a backup
+before pulling a new tag if the release touches the schema.
+
+`stop_grace_period` gives Chromium 60s to flush its profile on shutdown. Do not
+shorten it: killing it abruptly can leave a session unrestorable.
+
+## Reaching the WAHA dashboard
+
+There is no published port, which is the correct default. To look at it while
+debugging, uncomment the `ports:` block in `docker-compose.yml` (it binds to
+`127.0.0.1:3001`, not the public interface), `docker compose up -d waha`, and
+tunnel in:
+
+```bash
+ssh -L 3001:127.0.0.1:3001 you@your-vps
+```
+
+Then open `http://localhost:3001` and log in with the `WAHA_DASHBOARD_*`
+credentials. Comment the block back out when you are done.
+
+Expect the dashboard to show "Unauthorized" on a first visit even after a
+successful login — it is a browser app that defaults to the literal API key
+`admin`. [waha/README.md](../../waha/README.md) explains the one-line fix and
+covers WAHA's two independent auth systems in full.
+
+## Troubleshooting
+
+| Symptom | Cause |
+| --- | --- |
+| `SQLITE_CANTOPEN` in the app log | `init.sh` was not run; `data/app` is root-owned. |
+| Login page rejects the email before submitting | `ADMIN_EMAIL` has no `@`. The field is `type="email"`; use an address-shaped value. |
+| Changed `ADMIN_PASSWORD` but the old one still works | The account is created on first boot only. Run `pnpm seed` to rotate it. |
+| WAHA container never becomes healthy | `WAHA_API_KEY` mismatch — `/health` answers 401 without the key. Here both services read one line, so suspect a stale container: `docker compose up -d --force-recreate waha`. |
+| Messages arrive but nothing replies | Check `WAHA_WEBHOOK_HMAC_KEY` is identical to what the session was created with; the route answers 401 on a bad signature. Press **Connect** again to re-push the webhook config. |
+| `exec format error` on start | Image architecture does not match the host — rebuild with `--platform=linux/amd64`. |
+| `denied` / `unauthorized` on pull | Not logged in to ghcr.io on this host, or the token lacks `read:packages`. |
+| Build uploads gigabytes of context | `deployment/*/data` missing from the root `.dockerignore`. |
+| App starts, WhatsApp page shows nothing | Normal if WAHA is still booting — it takes ~30s. The app does not wait for it on purpose, so the dashboard stays reachable while you diagnose the gateway. |

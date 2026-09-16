@@ -1,0 +1,103 @@
+# WA Chat Flow — all-in-one deployment (app + WAHA, one compose project).
+#
+#   Internet ──► app (:3000) ──► waha (compose network only, never published)
+#                  │                │
+#                  └── data/app     └── data/waha
+#
+# Unlike the split deployment at the repository root, both services live in this
+# single project and share one `.env`. That removes the two things the split
+# setup gets wrong most often: a `WAHA_API_KEY` that differs between the two
+# files, and an external network that has to exist before the app will start.
+#
+#   cd deployment/all-in-one
+#   ./init.sh               # writes .env with generated secrets, creates data/
+#   docker compose up -d
+#
+# Nothing is built here — the app runs a prebuilt image from the registry. The
+# image is produced by ../../docker-build.mjs, which is the only thing that
+# needs a checkout of the source.
+
+# Names the project, so containers are wa-chat-flow-app-1 / wa-chat-flow-waha-1
+# rather than taking the directory name (all-in-one-*).
+name: wa-chat-flow
+
+services:
+  app:
+    # Built and pushed by ../../docker-build.mjs. Pin APP_IMAGE_TAG to a build
+    # number for a deployment you can roll back; `latest` moves under you and
+    # gives `docker compose pull` nothing to compare against.
+    #
+    # To run an image you built locally but have not pushed, set
+    # APP_IMAGE=wa-chat-flow and APP_IMAGE_TAG=local — that is the script's
+    # LOCAL_TAG, so no registry is involved.
+    image: ${APP_IMAGE:-ghcr.io/boonpin/wa-chat-flow}:${APP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Fixed by this topology, so they are set here rather than in `.env`:
+      # editing them there could only ever break the wiring between the two
+      # services. Both names resolve on the compose network below.
+      DATA_DIR: /storage/app
+      WAHA_BASE_URL: http://waha:3000
+      # Where WAHA posts events. Resolved *inside the WAHA container*, where
+      # `localhost` is WAHA itself — hence the service name, not APP_URL.
+      WAHA_WEBHOOK_URL: http://app:3000/api/webhooks/waha
+    volumes:
+      # The SQLite database. Owned by uid 1001 on the host (see init.sh) —
+      # the image runs as the unprivileged `nextjs` user and cannot write to a
+      # root-owned directory that Docker created for it.
+      - ./data/app:/storage/app
+    ports:
+      # Bind to 127.0.0.1 (APP_BIND) when a reverse proxy on this host
+      # terminates TLS in front of the app.
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-3000}:3000"
+    depends_on:
+      # Deliberately `service_started`, not `service_healthy`. The app never
+      # calls WAHA at boot — session reconciliation is lazy — and a gateway that
+      # fails its healthcheck (a wrong API key, say) must not also take the
+      # dashboard down, since the dashboard is where you diagnose it.
+      waha:
+        condition: service_started
+    healthcheck:
+      # /login is the one page served without a session cookie, so it answers
+      # 200 for a healthy app and nothing else has to be authenticated here.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  waha:
+    image: devlikeapro/waha:latest
+    restart: unless-stopped
+    environment:
+      WHATSAPP_API_KEY: ${WAHA_API_KEY:?set WAHA_API_KEY in .env}
+      # Bring saved sessions back up after a restart without manual rescans.
+      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+      WAHA_PRINT_QR: "False"
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:-admin}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?set WAHA_DASHBOARD_PASSWORD in .env}
+    volumes:
+      # ./data/waha/sessions holds one Chromium profile per WhatsApp login and
+      # can reach multiple GB. Kept here so it is backed up with the database,
+      # and excluded in the repository's .dockerignore so a source checkout on
+      # this host cannot sweep it into a build context.
+      - ./data/waha/sessions:/app/.sessions
+      - ./data/waha/media:/app/.media
+    healthcheck:
+      # /health requires the API key when WHATSAPP_API_KEY is set — without the
+      # header it answers 401 and the container never becomes healthy.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health',{headers:{'X-Api-Key':process.env.WHATSAPP_API_KEY||''}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # Chromium needs time to flush its profile; killing it abruptly can leave a
+    # session unrestorable and force a QR rescan.
+    stop_grace_period: 60s
+    # No `ports:`. WAHA's API can read your chats and send messages from your
+    # number, and the app reaches it over the compose network. To open the WAHA
+    # dashboard while debugging, uncomment this and tunnel to it over SSH —
+    # it binds to loopback, not to the public interface.
+    # ports:
+    #   - "127.0.0.1:3001:3000"

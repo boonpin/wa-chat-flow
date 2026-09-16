@@ -118,6 +118,16 @@ Responsibility split:
 
 ## Production — Docker Compose (recommended)
 
+Two layouts ship with the repository. **Run one or the other, never both** —
+they would fight over port 3000 and keep two separate session stores.
+
+| | When to use it |
+| --- | --- |
+| **Split** (below) | The gateway has its own lifecycle: another host, its own upgrade cadence, or several apps sharing one gateway. |
+| **All-in-one** ([deployment/all-in-one](deployment/all-in-one/)) | App and gateway on the same box. One compose project, one `.env`, one `docker compose up`. Runs a prebuilt image, so the host needs no source checkout. |
+
+### Split deployment
+
 The gateway and the application are **two independent deployments**. Bring the
 gateway up first — it creates the network the app joins.
 
@@ -143,6 +153,11 @@ cp .env.example .env
 
 docker compose up -d --build
 ```
+
+The split deployment builds from source on the host. To deploy a prebuilt image
+instead, see [deployment/all-in-one](deployment/all-in-one/) and
+`./docker-build.mjs`, which builds and pushes to
+`ghcr.io/boonpin/wa-chat-flow`.
 
 ```
 Small VPS

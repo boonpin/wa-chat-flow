@@ -14,3 +14,10 @@ data
 npm-debug.log*
 docs
 README.md
+
+# The all-in-one deployment builds from the repository root, so its own state
+# has to be excluded here too — the patterns above only match the top level.
+# Without the first line the WAHA Chromium profile ships to the daemon on every
+# build; without the second, a filled-in .env lands in the builder layer.
+deployment/*/data
+deployment/*/.env

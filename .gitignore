@@ -54,3 +54,6 @@ next-env.d.ts
 waha/data
 
 .claude/settings.local.json
+
+# all-in-one deployment runtime state
+/deployment/*/data/

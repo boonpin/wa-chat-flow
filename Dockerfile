@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
-COPY package.json pnpm-lock.yaml ./
+# pnpm-workspace.yaml carries allowBuilds/onlyBuiltDependencies. Without it
+# pnpm refuses to run better-sqlite3's install script, so the native addon is
+# never built and pnpm 11 fails the install outright.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # ─── Build ────────────────────────────────────────────────────────────────────
@@ -29,6 +32,21 @@ RUN pnpm build
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
+
+# Supplied by docker-build.mjs. Declared here so the values land on the image as
+# standard OCI labels: `docker inspect` on a running container then answers
+# "which build is this?" without shelling in or guessing from the tag.
+ARG BUILD_DATE
+ARG GIT_REVISION
+ARG BUILD_NUMBER
+ARG BUILDER_HOSTNAME
+
+LABEL org.opencontainers.image.title="wa-chat-flow" \
+      org.opencontainers.image.source="https://github.com/boonpin/wa-chat-flow" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${GIT_REVISION}" \
+      org.opencontainers.image.version="${BUILD_NUMBER}" \
+      com.wa-chat-flow.built-by="${BUILDER_HOSTNAME}"
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
