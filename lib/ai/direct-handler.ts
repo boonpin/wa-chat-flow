@@ -3,6 +3,7 @@ import type { ProviderResponse, ProviderTurn } from './providers/types'
 import { resolveConnection, type BotConnection } from './connection'
 import { ZERO_USAGE, addUsage, recordUsage } from './usage'
 import type { AIHandler, AIInput, AIOutput } from './types'
+import { channelGuidance } from '@/lib/channel'
 import { executeTool } from '@/lib/tools/runner'
 import type { ToolContext, ToolRun } from '@/lib/tools/types'
 
@@ -40,7 +41,12 @@ export class DirectAIHandler implements AIHandler {
     ]
 
     const base = {
-      prompt: input.bot.prompt,
+      // The channel note goes after the bot's own instructions: it is about how
+      // to write, never about what to say, and must not outrank the business
+      // context an operator actually maintains.
+      prompt: input.channel
+        ? `${input.bot.prompt}\n\n${channelGuidance(input.channel)}`
+        : input.bot.prompt,
       model: connection.model,
       apiKey: connection.apiKey,
       ...(input.tools?.length ? { tools: input.tools } : {}),

@@ -159,6 +159,7 @@ function extractMessageId(payload: unknown): string | undefined {
 
 export class WahaProvider implements WhatsAppProvider {
   readonly name = 'waha' as const
+  readonly channel = 'whatsapp' as const
 
   async sendText({ sessionId, phone, text }: SendTextInput): Promise<SendResult> {
     try {

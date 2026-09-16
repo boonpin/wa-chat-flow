@@ -2,6 +2,7 @@ import type { aiBots } from '@/lib/db/schema'
 import type { ToolDefinition, ToolRun } from '@/lib/tools/types'
 import type { TokenUsage } from './providers/types'
 import type { BotConnection } from './connection'
+import type { Channel } from '@/lib/channel/types'
 
 export type Bot = typeof aiBots.$inferSelect
 
@@ -18,6 +19,11 @@ export interface AIInput {
   /** The message to reply to. */
   message: string
   contact: { name: string | null; phone: string }
+  /**
+   * The surface this reply is going to. The handler tells the model, so the
+   * answer is shaped for a phone screen before anything has to reformat it.
+   */
+  channel?: Channel
   conversationId: string
   contactId: string
   /** Tools this bot may call. Omitted or empty = plain completion, as before. */

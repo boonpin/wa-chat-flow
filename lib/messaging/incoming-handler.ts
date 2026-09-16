@@ -218,6 +218,7 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
       history: context.history,
       message: context.pending.join('\n'),
       contact: { name: contact.name, phone: contact.phoneNumber },
+      channel: provider.channel,
       conversationId: conversation.id,
       contactId: contact.id,
       tools: resolveTools(bot.id),

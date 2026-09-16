@@ -48,6 +48,12 @@ replaced without touching business logic:
   a call is made and billed against. `lib/ai/providers/` holds one dumb
   translator per vendor and is the only place either SDK's wire format is known.
   **Never read a key off a bot; call `resolveConnection()`.**
+- **`ChannelFormatter`** (`lib/channel/types.ts`) — how a reply is *written* for
+  the surface it lands on, which is a separate question from who carries it. A
+  **channel** is WhatsApp; a **provider** is WAHA. `WhatsAppFormatter` is the
+  sole implementation and `lib/channel/whatsapp.ts` is the only file that knows
+  WhatsApp's markup. **Never import a formatter outside `lib/channel/`; call
+  `formatForChannel()`.**
 - **`CaptureSink`** (`lib/tools/sinks/types.ts`) — where a captured row is
   written. `AppsScriptSink` is the sole implementation, and
   `lib/tools/sinks/apps-script.ts` is the only file that knows its wire format.
@@ -59,7 +65,8 @@ replaced without touching business logic:
 - [lib/wa/](lib/wa/) — `types.ts` (transport contracts), `waha-provider.ts`, `normalize.ts` (webhook payload → internal shape), `sessions.ts` (session records + live status), `phone.ts`
 - [lib/messaging/incoming-handler.ts](lib/messaging/incoming-handler.ts) — **the single entry point for every inbound message.** Split into `persistIncomingMessage` (synchronous, must finish before the webhook acks) and `runAutoReply` (async, runs later). `runAutoReply` is keyed on the **conversation**, not the message that woke it, and re-reads everything it needs from the database — so a timer and a restart-recovery call behave identically.
 - [lib/messaging/reply-scheduler.ts](lib/messaging/reply-scheduler.ts) — **decides when a thread is answered.** An inbound message opens a debounce window instead of triggering a reply; every further message restarts it, and one reply then answers the whole burst.
-- [lib/messaging/outgoing.ts](lib/messaging/outgoing.ts) — all outbound sends; writes the row before sending so failures stay visible
+- [lib/messaging/outgoing.ts](lib/messaging/outgoing.ts) — all outbound sends; writes the row before sending so failures stay visible, and rewrites model-authored Markdown for the channel on the way past
+- [lib/channel/](lib/channel/) — `types.ts` (the `Channel` union and the formatter contract), `whatsapp.ts` (Markdown → `*bold*`, `_italic_`, flattened tables), `index.ts` (`formatForChannel`, `channelGuidance`)
 - [lib/conversation/service.ts](lib/conversation/service.ts) — threads, modes, statuses, the Inbox queries
 - [lib/ai/context.ts](lib/ai/context.ts) — conversation memory (last 20 text messages)
 - [lib/ai/direct-handler.ts](lib/ai/direct-handler.ts) — LLM call **and the tool loop**; providers under `lib/ai/providers/` are dumb translators between `ProviderRequest` and each SDK's wire format
@@ -199,6 +206,14 @@ rejected. One is fixed in the dashboard, the other by retrying.
 - No secrets or default credentials in code. Runtime state (`storage/`, `waha/data/`, `*.db`) is gitignored.
 - `waha/` is a separate deployment: never import from it, never assume it shares the app's `.env`, and keep app changes from requiring a gateway redeploy.
 - WAHA has two independent auth systems — browser basic auth for its dashboard, `X-Api-Key` for its REST API. Dashboard access grants no API access.
+- **Model output is Markdown; WhatsApp is not.** A reply is rewritten for
+  `provider.channel` inside `sendOutgoingMessage`, gated on sender: `ai` text is
+  converted, `human` text is sent exactly as the operator typed it. The row
+  stores what the channel received, not the Markdown it came from, so the Inbox
+  mirrors the customer's phone. `formatForChannel` never throws — like
+  `setTyping`, losing the conversion must not cost the reply. The prompt half
+  (`channelGuidance`, appended in `DirectAIHandler`) is the damper and the
+  formatter is the guarantee; **keep both, or the tables come back.**
 - **`setTyping` is best-effort and must never throw.** It is cosmetic, older
   WAHA builds have no `/presence` route, and losing the indicator is never a
   reason to abandon the reply it was decorating.

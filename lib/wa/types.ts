@@ -6,6 +6,8 @@
  * `WhatsAppProvider` — not touching business logic.
  */
 
+import type { Channel } from '@/lib/channel/types'
+
 /** Normalised session lifecycle, mapped from whatever the provider reports. */
 export type SessionStatus = 'offline' | 'starting' | 'waiting_qr' | 'connected' | 'failed'
 
@@ -62,7 +64,19 @@ export interface SessionStatusEvent {
 }
 
 export interface WhatsAppProvider {
+  /**
+   * The vendor carrying the messages, and the namespace
+   * `messages.provider_message_id` is unique within.
+   */
   readonly name: 'waha'
+
+  /**
+   * The surface those messages are rendered on, which is a separate question
+   * from who carries them — see `lib/channel/types.ts`. It is what decides how
+   * a model's reply is written, so a second WhatsApp transport would change
+   * `name` and leave this alone.
+   */
+  readonly channel: Channel
 
   sendText(input: SendTextInput): Promise<SendResult>
 
