@@ -24,6 +24,13 @@ export interface BotConnection {
   apiKey: string
 }
 
+/**
+ * The passes that run *before* a reply is written, turning an attachment into
+ * something the text model can read. Text is not one of them: it is mandatory,
+ * and its absence is a hard failure rather than a capability to check.
+ */
+export type MediaCapability = 'image' | 'voice'
+
 export function getAiProvider(id: string): AIProvider | undefined {
   return db.select().from(aiProviders).where(eq(aiProviders.id, id)).get()
 }
@@ -80,6 +87,42 @@ export function resolveConnection(bot: Bot): BotConnection {
     providerName: provider.name,
     kind: provider.kind,
     model: provider.model,
+    apiKey,
+  }
+}
+
+/**
+ * The account and model for reading an attachment, or null when this bot
+ * cannot read that kind at all.
+ *
+ * Null rather than a throw, because "we do not read voice notes" is an answer
+ * the customer gets told, not a failure. Four different situations collapse
+ * into it on purpose — the capability switched off, no model chosen, the
+ * provider disabled or deleted, no key anywhere — because a caller that handled
+ * three of them and missed the fourth would answer a voice note as though
+ * silence had arrived.
+ */
+export function resolveCapability(bot: Bot, capability: MediaCapability): BotConnection | null {
+  if (!bot.providerId) return null
+
+  const provider = getAiProvider(bot.providerId)
+  if (!provider || !provider.enabled) return null
+  if (!isProviderKind(provider.kind)) return null
+
+  const enabled = capability === 'image' ? provider.imageEnabled : provider.voiceEnabled
+  if (!enabled) return null
+
+  const model = (capability === 'image' ? provider.imageModel : provider.voiceModel)?.trim()
+  if (!model) return null
+
+  const apiKey = resolveProviderKey(provider)
+  if (!apiKey) return null
+
+  return {
+    providerId: provider.id,
+    providerName: provider.name,
+    kind: provider.kind,
+    model,
     apiKey,
   }
 }

@@ -22,6 +22,7 @@ import {
   PROVIDER_KINDS,
   PROVIDER_ENV_KEYS,
   PROVIDER_LABELS,
+  type ModelCapability,
   type ProviderKind,
 } from '@/lib/ai/provider-kinds'
 
@@ -30,6 +31,10 @@ export interface ProviderRecord {
   name: string
   kind: string
   model: string
+  imageModel: string | null
+  imageEnabled: boolean
+  voiceModel: string | null
+  voiceEnabled: boolean
   enabled: boolean
   hasApiKey: boolean
   /** How many bots answer through this provider. Deleting is refused above zero. */
@@ -46,6 +51,10 @@ interface FormState {
   name: string
   kind: ProviderKind
   model: string
+  imageModel: string
+  imageEnabled: boolean
+  voiceModel: string
+  voiceEnabled: boolean
   apiKey: string
   enabled: boolean
 }
@@ -55,6 +64,12 @@ function initialState(provider: ProviderRecord | null): FormState {
     name: provider?.name ?? '',
     kind: (provider?.kind as ProviderKind) ?? 'openai',
     model: provider?.model ?? '',
+    // The model survives the switch being turned off: an operator pausing a
+    // capability for a week should not have to remember what they had chosen.
+    imageModel: provider?.imageModel ?? '',
+    imageEnabled: provider?.imageEnabled ?? false,
+    voiceModel: provider?.voiceModel ?? '',
+    voiceEnabled: provider?.voiceEnabled ?? false,
     // Always blank: the stored key is never sent to the browser, and blank
     // means "keep whatever is stored".
     apiKey: '',
@@ -70,7 +85,12 @@ export function ProviderForm({ provider }: { provider: ProviderRecord | null }) 
   const [form, setForm] = useState<FormState>(() => initialState(provider))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [errors, setErrors] = useState<{ name?: string; model?: string }>({})
+  const [errors, setErrors] = useState<{
+    name?: string
+    model?: string
+    imageModel?: string
+    voiceModel?: string
+  }>({})
   const [confirmLeave, setConfirmLeave] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -87,7 +107,7 @@ export function ProviderForm({ provider }: { provider: ProviderRecord | null }) 
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
-    if (key === 'name' || key === 'model') setErrors((e) => ({ ...e, [key]: undefined }))
+    setErrors((e) => (key in e ? { ...e, [key]: undefined } : e))
   }
 
   function leaveTo(href: string) {
@@ -100,6 +120,14 @@ export function ProviderForm({ provider }: { provider: ProviderRecord | null }) 
     const nextErrors: typeof errors = {}
     if (!form.name.trim()) nextErrors.name = 'Give this provider a name so you can recognise it later.'
     if (!form.model.trim()) nextErrors.model = 'Choose the model this provider runs.'
+    // Caught here as well as on the server, because a capability that is on
+    // with nothing behind it looks configured and behaves as though it is off.
+    if (form.imageEnabled && !form.imageModel.trim()) {
+      nextErrors.imageModel = 'Choose a model for reading images, or turn image reading off.'
+    }
+    if (form.voiceEnabled && !form.voiceModel.trim()) {
+      nextErrors.voiceModel = 'Choose a model for voice notes, or turn voice notes off.'
+    }
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) {
       setSaveError('Check the highlighted fields and try again.')
@@ -109,7 +137,13 @@ export function ProviderForm({ provider }: { provider: ProviderRecord | null }) 
     setSaving(true)
     setSaveError(null)
     try {
-      const payload = { ...form, name: form.name.trim(), model: form.model.trim() }
+      const payload = {
+        ...form,
+        name: form.name.trim(),
+        model: form.model.trim(),
+        imageModel: form.imageModel.trim(),
+        voiceModel: form.voiceModel.trim(),
+      }
       if (isNew) {
         await request('/api/ai-providers', {
           method: 'POST',
@@ -187,7 +221,9 @@ export function ProviderForm({ provider }: { provider: ProviderRecord | null }) 
           hint="Changing the vendor clears the model, because the two catalogues share no names."
           onChange={(e) => {
             const kind = e.target.value as ProviderKind
-            setForm((f) => ({ ...f, kind, model: '' }))
+            // All three, not just the reply model: no id survives a vendor
+            // change, and a stale one left in a hidden field fails later.
+            setForm((f) => ({ ...f, kind, model: '', imageModel: '', voiceModel: '' }))
           }}
         >
           {PROVIDER_KINDS.map((kind) => (
@@ -215,16 +251,66 @@ export function ProviderForm({ provider }: { provider: ProviderRecord | null }) 
 
       <FormSection
         title="Model"
-        scope="Which model answers. The list comes from the vendor, so it only offers what this key can actually use."
+        scope="Which model writes the replies. The list comes from the vendor, so it only offers what this key can actually use."
       >
         <ModelPicker
           kind={form.kind}
           apiKey={form.apiKey}
           providerId={provider?.id ?? null}
+          capability="text"
+          label="Reply model"
+          required
           value={form.model}
           error={errors.model}
           onChange={(model) => update('model', model)}
         />
+      </FormSection>
+
+      <FormSection
+        title="Attachments"
+        scope="Photos and voice notes are read by a separate model first; the reply model above then answers what it found. Anything turned off here is declined politely in the chat instead of being ignored."
+      >
+        <Capability
+          title="Read photos"
+          description="Each photo costs one call of its own before the reply is written. At most four per burst are read — any more are counted and mentioned rather than read."
+          enabled={form.imageEnabled}
+          onToggle={(v) => update('imageEnabled', v)}
+          name={form.name}
+          noun="photos"
+        >
+          <ModelPicker
+            kind={form.kind}
+            apiKey={form.apiKey}
+            providerId={provider?.id ?? null}
+            capability="image"
+            label="Image model"
+            required
+            value={form.imageModel}
+            error={errors.imageModel}
+            onChange={(model) => update('imageModel', model)}
+          />
+        </Capability>
+
+        <Capability
+          title="Listen to voice notes"
+          description="Voice notes are transcribed, then answered as though the customer had typed them. At most three per burst."
+          enabled={form.voiceEnabled}
+          onToggle={(v) => update('voiceEnabled', v)}
+          name={form.name}
+          noun="voice notes"
+        >
+          <ModelPicker
+            kind={form.kind}
+            apiKey={form.apiKey}
+            providerId={provider?.id ?? null}
+            capability="voice"
+            label="Voice model"
+            required
+            value={form.voiceModel}
+            error={errors.voiceModel}
+            onChange={(model) => update('voiceModel', model)}
+          />
+        </Capability>
       </FormSection>
 
       <FormSection title="Availability" scope="Whether bots may answer through this account.">
@@ -303,17 +389,73 @@ export function ProviderForm({ provider }: { provider: ProviderRecord | null }) 
 }
 
 /**
+ * One optional capability: a switch, and the model it needs to work.
+ *
+ * The picker stays mounted but hidden when the switch is off, so the chosen
+ * model is still in the form and still saved. Turning a capability off for a
+ * fortnight should not cost an operator the setting they had made.
+ */
+function Capability({
+  title,
+  description,
+  enabled,
+  onToggle,
+  name,
+  noun,
+  children,
+}: {
+  title: string
+  description: string
+  enabled: boolean
+  onToggle: (value: boolean) => void
+  name: string
+  noun: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border border-[var(--input-border)]/60 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-ink">{title}</p>
+          <p className="mt-0.5 text-sm text-ink-muted">{description}</p>
+        </div>
+        <Switch
+          checked={enabled}
+          onChange={onToggle}
+          label={`${name || 'This provider'} reads ${noun}`}
+        />
+      </div>
+
+      {enabled ? (
+        children
+      ) : (
+        <p className="text-xs text-ink-soft">
+          Customers who send {noun} are told the bot cannot read them, and offered a person instead.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
  * The model field.
  *
  * A dropdown of the vendor's own catalogue is the point — typing a model id
  * that the key cannot reach fails only once a customer is waiting. But the list
  * needs a working key and a network round trip, so a typed id stays available
  * as the fallback: a new model can ship before this app has heard of it.
+ *
+ * `capability` decides which catalogue is asked for, because the three do not
+ * overlap: a transcription model cannot hold a conversation, and offering it in
+ * the reply dropdown would be offering a way to break the bot.
  */
 function ModelPicker({
   kind,
   apiKey,
   providerId,
+  capability,
+  label,
+  required,
   value,
   error,
   onChange,
@@ -321,6 +463,9 @@ function ModelPicker({
   kind: ProviderKind
   apiKey: string
   providerId: string | null
+  capability: ModelCapability
+  label: string
+  required?: boolean
   value: string
   error?: string
   onChange: (model: string) => void
@@ -345,7 +490,7 @@ function ModelPicker({
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ kind, apiKey, providerId }),
+          body: JSON.stringify({ kind, apiKey, providerId, capability }),
         }
       )
       if (id !== requestId.current) return
@@ -359,7 +504,7 @@ function ModelPicker({
     } finally {
       if (id === requestId.current) setLoading(false)
     }
-  }, [kind, apiKey, providerId])
+  }, [kind, apiKey, providerId, capability])
 
   // A saved provider already has a usable key, so the list is fetched without
   // being asked for. A new one waits: there is nothing to authenticate with yet.
@@ -371,11 +516,11 @@ function ModelPicker({
   useEffect(() => {
     if (!providerId) return
     // The vendor changing is exactly when the old list becomes wrong.
-    const token = `${providerId}:${kind}`
+    const token = `${providerId}:${kind}:${capability}`
     if (autoLoaded.current === token) return
     autoLoaded.current = token
     void load()
-  }, [providerId, kind, load])
+  }, [providerId, kind, capability, load])
 
   // The stored model may predate the list, or have been retired since. Keeping
   // it as an option means opening the form never silently changes the model.
@@ -393,8 +538,8 @@ function ModelPicker({
     <div className="space-y-2">
       {showList ? (
         <Select
-          label="Model"
-          required
+          label={label}
+          required={required}
           value={value}
           error={error}
           onChange={(e) => onChange(e.target.value)}
@@ -417,8 +562,8 @@ function ModelPicker({
         </Select>
       ) : (
         <Field
-          label="Model"
-          required
+          label={label}
+          required={required}
           error={error}
           hint={`Enter a model id exactly as ${PROVIDER_LABELS[kind]} names it, or load the list to choose from it.`}
         >
@@ -429,7 +574,7 @@ function ModelPicker({
               aria-invalid={invalid || undefined}
               value={value}
               onChange={(e) => onChange(e.target.value)}
-              placeholder={kind === 'openai' ? 'gpt-4o-mini' : 'gemini-2.0-flash'}
+              placeholder={placeholderFor(kind, capability)}
               className={`h-11 w-full rounded-md border bg-inset px-3 text-base text-ink md:h-10 md:text-sm ${
                 invalid
                   ? 'border-[var(--input-error-border)]'
@@ -466,4 +611,9 @@ function ModelPicker({
       {loadError && <InlineError>{loadError}</InlineError>}
     </div>
   )
+}
+
+function placeholderFor(kind: ProviderKind, capability: ModelCapability): string {
+  if (kind === 'gemini') return 'gemini-2.0-flash'
+  return capability === 'voice' ? 'gpt-4o-transcribe' : 'gpt-4o-mini'
 }

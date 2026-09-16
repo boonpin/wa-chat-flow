@@ -11,7 +11,21 @@ import type { Channel } from '@/lib/channel/types'
 /** Normalised session lifecycle, mapped from whatever the provider reports. */
 export type SessionStatus = 'offline' | 'starting' | 'waiting_qr' | 'connected' | 'failed'
 
-export type MessageType = 'text' | 'image' | 'audio' | 'document' | 'unknown'
+/**
+ * Kinds of inbound message, kept finer-grained than what we can act on.
+ *
+ * `sticker` and `video` were once folded into `image`, which made three
+ * different policies — describe it, read its name, decline it — impossible to
+ * tell apart by the time they reached the reply path.
+ */
+export type MessageType =
+  | 'text'
+  | 'image'
+  | 'sticker'
+  | 'audio'
+  | 'video'
+  | 'document'
+  | 'unknown'
 
 export interface SendTextInput {
   sessionId: string
@@ -52,8 +66,37 @@ export interface IncomingMessage {
   phone: string
   contactName?: string
   type: MessageType
+  /** The caption, for media. Never a description of the file itself. */
   text?: string
+  /** Where the provider is holding the attachment, when there is one. */
+  media?: IncomingMedia
+  /**
+   * A sticker's own name, where WhatsApp carries one.
+   *
+   * It is the whole reason a sticker can be answered at all: a named sticker
+   * says something ("thank you", "shocked"), an unnamed one is decoration and
+   * is ignored rather than guessed at.
+   */
+  stickerName?: string
   timestamp: Date
+}
+
+/** An attachment as the provider describes it, before anything is downloaded. */
+export interface IncomingMedia {
+  /**
+   * Provider-side location. Not necessarily reachable from a browser, or from
+   * anywhere outside the app's own network — only `downloadMedia` may resolve it.
+   */
+  url: string
+  mimeType?: string
+  filename?: string
+  sizeBytes?: number
+}
+
+/** An attachment's actual bytes, once fetched. */
+export interface DownloadedMedia {
+  data: Buffer
+  mimeType: string
 }
 
 /** A session lifecycle change pushed by the provider. */
@@ -109,4 +152,14 @@ export interface WhatsAppProvider {
    * provider has no mapping for it.
    */
   resolveLid(sessionId: string, lid: string): Promise<string | null>
+
+  /**
+   * Fetches an attachment's bytes from wherever the provider is holding them.
+   *
+   * Here rather than at the call site because the location is the provider's
+   * business: WAHA serves files from its own host behind its own API key, and
+   * nothing above `lib/wa/` should have to know that — or be able to hand that
+   * URL to a third party.
+   */
+  downloadMedia(url: string): Promise<DownloadedMedia>
 }

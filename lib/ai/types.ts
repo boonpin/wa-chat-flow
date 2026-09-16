@@ -24,6 +24,16 @@ export interface AIInput {
    * answer is shaped for a phone screen before anything has to reformat it.
    */
   channel?: Channel
+  /**
+   * Whether anything in this conversation reached the model as an attachment
+   * note rather than as typed words.
+   *
+   * It gates the paragraph explaining the `[Photo] …` convention. Sent only
+   * when it applies, because a bot that never sees an image should not be
+   * carrying instructions about images in every prompt — and a model told about
+   * a notation it never encounters is a model liable to invent one.
+   */
+  hasMedia?: boolean
   conversationId: string
   contactId: string
   /** Tools this bot may call. Omitted or empty = plain completion, as before. */

@@ -23,8 +23,25 @@ export const aiProviders = sqliteTable('ai_providers', {
   kind: text('kind').notNull(),
   /** Optional. Falls back to OPENAI_API_KEY / GEMINI_API_KEY from the env. */
   apiKey: text('api_key'),
-  /** Model id, chosen from the vendor's own model list. */
+  /**
+   * The text model — the one that actually writes replies, and the only
+   * mandatory one. `image_model` and `voice_model` are the optional passes that
+   * run *before* it, turning a photo or a voice note into something it can read.
+   */
   model: text('model').notNull(),
+  /**
+   * Model used to describe inbound images, or null when none is chosen.
+   *
+   * Enabled and configured are two separate facts on purpose: an operator
+   * turning the capability off for a week should not lose the model they
+   * picked. `resolveCapability` treats either one missing as "not supported",
+   * so the customer is told plainly rather than answered as if no photo arrived.
+   */
+  imageModel: text('image_model'),
+  imageEnabled: integer('image_enabled', { mode: 'boolean' }).notNull().default(false),
+  /** Model used to transcribe inbound voice notes. Same rules as the image pair. */
+  voiceModel: text('voice_model'),
+  voiceEnabled: integer('voice_enabled', { mode: 'boolean' }).notNull().default(false),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
@@ -140,10 +157,34 @@ export const messages = sqliteTable(
     providerMessageId: text('provider_message_id'),
     direction: text('direction').notNull(), // incoming | outgoing
     senderType: text('sender_type').notNull(), // customer | ai | human | system
-    messageType: text('message_type').notNull().default('text'), // text | image | audio | document | unknown
+    // text | image | sticker | audio | video | document | tool | unknown
+    messageType: text('message_type').notNull().default('text'),
+    /** What the customer typed. For media, the caption — never the description. */
     content: text('content').notNull().default(''),
     status: text('status').notNull().default('received'), // received | processing | sent | failed
     error: text('error'),
+    /** Where the transport is holding the file, and what it is. Null for text. */
+    mediaUrl: text('media_url'),
+    mediaMime: text('media_mime'),
+    /**
+     * What the image or voice model understood this attachment to be.
+     *
+     * Kept apart from `content` because they are different claims: `content` is
+     * what the customer wrote, this is what a model guessed. The Inbox has to
+     * be able to show the operator which is which. It is also the cache — a
+     * described attachment is never sent to a vendor twice, however many turns
+     * the conversation runs for afterwards.
+     */
+    mediaSummary: text('media_summary'),
+    /**
+     * pending | described | unsupported | too_large | failed | ignored.
+     * Null for text rows.
+     *
+     * `ignored` is the one that reads oddly and earns its place: an unnamed
+     * sticker is not something the bot failed at, it is something nobody should
+     * ever be told about, so conversation memory skips it entirely.
+     */
+    mediaStatus: text('media_status'),
     /** Set on `message_type = 'tool'` rows, linking to what the call actually captured. */
     toolInvocationId: text('tool_invocation_id'),
     createdAt: text('created_at').notNull(),
@@ -319,6 +360,14 @@ export const aiUsage = sqliteTable(
     totalTokens: integer('total_tokens').notNull().default(0),
     /** Which round of the tool loop this call was; 0 is the first ask. */
     round: integer('round').notNull().default(0),
+    /**
+     * Which pass spent these tokens: `reply`, `image` or `voice`.
+     *
+     * Without it a transcription model's tokens are indistinguishable from the
+     * chat model's in the provider totals and the impact report, and `round`
+     * cannot tell them apart — it is always 0 for a media pass.
+     */
+    stage: text('stage').notNull().default('reply'),
     status: text('status').notNull().default('ok'), // ok | failed
     error: text('error'),
     latencyMs: integer('latency_ms'),

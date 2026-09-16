@@ -1,4 +1,5 @@
 import { listMessages } from '@/lib/conversation/service'
+import { isConversationRow, renderRow, renderSkipped, type MessageRow } from './media-render'
 import type { ChatTurn } from './types'
 
 /** How many prior messages the bot remembers. Keeps prompts small and cheap. */
@@ -17,8 +18,27 @@ export interface ConversationContext {
   history: ChatTurn[]
   /** The unanswered burst, oldest first. Empty when someone has already replied. */
   pending: string[]
+  /**
+   * The rows `pending` was rendered from.
+   *
+   * Handed out because the media pass has to know which attachments belong to
+   * the burst it is about to answer, and this is the only place that boundary
+   * is worked out. Describing anything outside it would bill an operator for
+   * photos nobody is waiting on.
+   */
+  pendingRows: MessageRow[]
   /** When the oldest unanswered message arrived — the anchor for the reply deadline. */
   pendingSince: string | null
+  /**
+   * Whether any line in either half came from an attachment rather than from
+   * something the customer typed.
+   *
+   * Computed across history as well as the burst: a photo described four turns
+   * ago is still sitting in the model's memory as a `[Photo] …` line, and a
+   * model that has not been told what that notation means is a model that will
+   * eventually repeat it to a customer.
+   */
+  hasMedia: boolean
 }
 
 /**
@@ -35,18 +55,28 @@ export interface ConversationContext {
  * message as "current" that its own history also contains.
  */
 export function buildContext(conversationId: string): ConversationContext {
-  const rows = deliveredText(conversationId)
+  const rows = conversationRows(conversationId)
 
   let boundary = rows.length
   while (boundary > 0 && rows[boundary - 1].direction === 'incoming') boundary--
 
   const history = rows.slice(0, boundary).slice(-HISTORY_LIMIT)
-  const pending = rows.slice(boundary).slice(-PENDING_LIMIT)
+  const pendingRows = rows.slice(boundary).slice(-PENDING_LIMIT)
+
+  // The cap note is appended once, after the burst, rather than sitting where
+  // the photos it stands for were: it is a fact about the whole burst, and
+  // threading it between two messages would read as part of one of them.
+  const skipped = renderSkipped(pendingRows)
+  const pending = pendingRows
+    .map((row) => renderRow(row, { pending: true }))
+    .filter((line): line is string => line !== null)
 
   return {
-    history: history.map(toTurn),
-    pending: pending.map((m) => m.content),
-    pendingSince: pending[0]?.createdAt ?? null,
+    history: history.map(toTurn).filter((turn): turn is ChatTurn => turn !== null),
+    pending: skipped ? [...pending, skipped] : pending,
+    pendingRows,
+    pendingSince: pendingRows[0]?.createdAt ?? null,
+    hasMedia: [...history, ...pendingRows].some((row) => row.mediaStatus !== null),
   }
 }
 
@@ -56,28 +86,36 @@ export function buildContext(conversationId: string): ConversationContext {
  * separate arguments to every AI handler.
  */
 export function buildHistory(conversationId: string, excludeMessageId?: string): ChatTurn[] {
-  return deliveredText(conversationId)
+  return conversationRows(conversationId)
     .filter((m) => m.id !== excludeMessageId)
     .slice(-HISTORY_LIMIT)
     .map(toTurn)
+    .filter((turn): turn is ChatTurn => turn !== null)
 }
 
 /**
  * The messages that actually count as conversation.
  *
- * Only delivered text: failed sends and non-text media would otherwise teach
- * the model that it said things the customer never saw. Tool rows are excluded
- * by the same filter — the model already saw those calls in its own loop.
+ * Outbound rows must have been delivered: a failed send would otherwise teach
+ * the model that it said something the customer never saw. Tool rows are
+ * excluded too — the model already saw those calls in its own loop.
+ *
+ * Attachments are in, which is the change that let the bot answer a photo at
+ * all: an image row carries whatever the media pass understood it to be, and
+ * one that could not be read carries a note saying so. Both are conversation.
  */
-function deliveredText(conversationId: string) {
+function conversationRows(conversationId: string): MessageRow[] {
   return listMessages(conversationId, HISTORY_LIMIT + PENDING_LIMIT + 1)
-    .filter((m) => m.messageType === 'text' && m.content.trim().length > 0)
     .filter((m) => m.direction === 'incoming' || m.status === 'sent')
+    .filter(isConversationRow)
 }
 
-function toTurn(m: { direction: string; content: string }): ChatTurn {
+function toTurn(row: MessageRow): ChatTurn | null {
+  const content = renderRow(row, { pending: false })
+  if (!content) return null
+
   return {
-    role: m.direction === 'incoming' ? ('user' as const) : ('assistant' as const),
-    content: m.content,
+    role: row.direction === 'incoming' ? ('user' as const) : ('assistant' as const),
+    content,
   }
 }

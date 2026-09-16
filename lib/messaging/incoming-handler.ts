@@ -10,6 +10,7 @@ import {
   type Conversation,
 } from '@/lib/conversation/service'
 import { buildContext } from '@/lib/ai/context'
+import { describePendingMedia, hasPendingMedia } from '@/lib/ai/media'
 import { resolveHandler } from '@/lib/ai/handler'
 import { attachUsageToMessage } from '@/lib/ai/usage'
 import { resolveTools } from '@/lib/tools/registry'
@@ -24,9 +25,9 @@ import type { ToolRun } from '@/lib/tools/types'
  * The single entry point for every inbound WhatsApp message, regardless of
  * transport. Webhooks do nothing but normalise and call in here.
  *
- *   dedupe → contact → conversation → store      (persistIncomingMessage)
- *   → open or extend the reply window            (scheduleAutoReply)
- *   → mode check → bot → context → AI → send     (runAutoReply)
+ *   dedupe → contact → conversation → store         (persistIncomingMessage)
+ *   → open or extend the reply window               (scheduleAutoReply)
+ *   → mode → bot → context → media → AI → send      (runAutoReply)
  *
  * The first split matters for delivery: persistence must finish before the
  * webhook is acked so a retry cannot duplicate the message, while the AI call —
@@ -56,7 +57,8 @@ export type AutoReplySkipReason =
   | 'new_conversation'
   | 'human_mode'
   | 'no_bot'
-  | 'unsupported_type'
+  /** Nothing here deserves a reply — a bare emoji, an unnamed sticker. */
+  | 'not_worth_answering'
   | 'empty_reply'
   /** Someone — an operator, or an earlier flush — answered the burst first. */
   | 'already_answered'
@@ -127,6 +129,9 @@ export function persistIncomingMessage(incoming: IncomingMessage): PersistResult
         content: incoming.text ?? '',
         status: 'received',
         error: null,
+        mediaUrl: incoming.media?.url ?? null,
+        mediaMime: incoming.media?.mimeType ?? null,
+        ...initialMediaState(incoming),
         createdAt: receivedAt,
       })
       .run()
@@ -170,8 +175,14 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
   // An empty burst is the normal outcome of a race the window exists to absorb:
   // the operator typed a reply while the AI was still waiting to. Whoever spoke
   // first wins, and nobody gets answered twice.
-  const context = buildContext(conversation.id)
-  if (context.pending.length === 0) return { status: 'skipped', reason: 'already_answered' }
+  //
+  // Asked of the *rows*, never of the rendered lines. An attachment nobody has
+  // read yet renders to nothing at all — that is the whole reason the media
+  // pass below exists — so a voice note sent on its own looked exactly like a
+  // burst somebody had already answered, and was dropped one step before the
+  // code that would have listened to it.
+  let context = buildContext(conversation.id)
+  if (context.pendingRows.length === 0) return { status: 'skipped', reason: 'already_answered' }
 
   // Nothing said before the burst means the thread opens with it. Under
   // `existing` that is a new conversation, which this policy does not answer —
@@ -207,18 +218,41 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
   const usageIds: string[] = []
 
   try {
-    // ─── 8. Context + AI ──────────────────────────────────────────────────────
+    // The indicator goes up before the media pass, not after it: reading a photo
+    // is the slowest thing that happens here, and it is the stretch during which
+    // the customer most needs to see that something is happening.
+    await provider.setTyping({ sessionId, phone: contact.phoneNumber, typing: true })
+
+    // ─── 8. Attachments ───────────────────────────────────────────────────────
+    // Photos and voice notes become words before the reply is written, so the
+    // text model answers one conversation rather than a conversation plus some
+    // files it cannot open. The context is rebuilt afterwards rather than
+    // patched, because the descriptions were written to the message rows —
+    // re-reading is what keeps this identical to a restart picking it up.
+    if (hasPendingMedia(context.pendingRows)) {
+      await describePendingMedia({
+        bot,
+        conversationId: conversation.id,
+        rows: context.pendingRows,
+        usageSink: usageIds,
+      })
+      context = buildContext(conversation.id)
+      if (context.pending.length === 0) {
+        return { status: 'skipped', reason: 'not_worth_answering' }
+      }
+    }
+
+    // ─── 9. Context + AI ──────────────────────────────────────────────────────
     // The burst is joined into one turn rather than replayed as several: it is
     // one thought the customer happened to send in pieces, and splitting it
     // would invite the model to answer the last fragment alone.
-    await provider.setTyping({ sessionId, phone: contact.phoneNumber, typing: true })
-
     const output = await resolveHandler(bot).reply({
       bot,
       history: context.history,
       message: context.pending.join('\n'),
       contact: { name: contact.name, phone: contact.phoneNumber },
       channel: provider.channel,
+      hasMedia: context.hasMedia,
       conversationId: conversation.id,
       contactId: contact.id,
       tools: resolveTools(bot.id),
@@ -234,7 +268,7 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
     const reply = output.text.trim()
     if (!reply) return { status: 'skipped', reason: 'empty_reply' }
 
-    // ─── 9. Send ──────────────────────────────────────────────────────────────
+    // ─── 10. Send ─────────────────────────────────────────────────────────────
     const sent = await sendOutgoingMessage({
       conversationId: conversation.id,
       contactId: contact.id,
@@ -349,6 +383,36 @@ function recordAiFailure(
     .run()
 
   return id
+}
+
+/**
+ * How an attachment starts life in the database.
+ *
+ * Almost everything starts `pending` and is resolved by the media pass at reply
+ * time, because whether a photo can be read depends on the bot that ends up
+ * answering — which is not known yet, and can change before the window elapses.
+ *
+ * Stickers are the exception in both directions. A named one is already
+ * described: WhatsApp told us what it is, and no model needs to be asked. An
+ * unnamed one is `ignored` — not failed, not unsupported, simply not something
+ * the bot should ever be told happened.
+ */
+function initialMediaState(incoming: IncomingMessage): {
+  mediaStatus: string | null
+  mediaSummary: string | null
+} {
+  if (incoming.type === 'sticker') {
+    const name = incoming.stickerName?.trim()
+    return name
+      ? { mediaStatus: 'described', mediaSummary: name }
+      : { mediaStatus: 'ignored', mediaSummary: null }
+  }
+
+  if (incoming.type === 'text' || incoming.type === 'unknown') {
+    return { mediaStatus: null, mediaSummary: null }
+  }
+
+  return { mediaStatus: 'pending', mediaSummary: null }
 }
 
 function isUniqueViolation(err: unknown): boolean {

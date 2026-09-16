@@ -20,7 +20,7 @@ services:
       # Kept OUTSIDE the repo: this is a multi-GB-capable Chromium profile, and
       # Next.js' build tracer tries to copy anything under the project root.
       - ./data/sessions:/app/.sessions
-      - ./data/media:/app/.media
+      - ./data/media:/tmp/whatsapp-files
     healthcheck:
       # /health requires the API key when WHATSAPP_API_KEY is set — without the
       # header it answers 401 and the container never becomes healthy.

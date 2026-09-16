@@ -54,6 +54,8 @@ export async function GET(req: Request) {
       senderType: m.senderType,
       status: m.status,
       error: m.error,
+      mediaSummary: m.mediaSummary,
+      mediaStatus: m.mediaStatus,
     })),
     hasMore: rows.length === limit,
   })

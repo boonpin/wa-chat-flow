@@ -6,7 +6,15 @@ import {
   type FunctionDeclarationSchema,
   type Schema,
 } from '@google/generative-ai'
-import type { ModelChoice, ProviderRequest, ProviderResponse, ProviderTurn, TokenUsage } from './types'
+import type {
+  DescribeRequest,
+  DescribeResponse,
+  ModelChoice,
+  ProviderRequest,
+  ProviderResponse,
+  ProviderTurn,
+  TokenUsage,
+} from './types'
 import type { JsonSchemaProperty, ToolDefinition } from '@/lib/tools/types'
 
 export async function generate(req: ProviderRequest): Promise<ProviderResponse> {
@@ -44,12 +52,61 @@ export async function generate(req: ProviderRequest): Promise<ProviderResponse> 
 }
 
 /**
+ * Describes images in one call, as inline data.
+ *
+ * Gemini takes pictures and sound through the same `generateContent` route it
+ * takes text through, so both media passes are the one function below with a
+ * different prompt — and neither needs the file to exist anywhere a third party
+ * could reach.
+ */
+export async function describeImages(req: DescribeRequest): Promise<DescribeResponse> {
+  return inlineGenerate(req)
+}
+
+/**
+ * Transcribes a voice note.
+ *
+ * Unlike OpenAI's dedicated speech endpoint this is a full model call, so it
+ * reports tokens and can be asked for more than the bare words — but the prompt
+ * decides that, not this function.
+ */
+export async function transcribeAudio(req: DescribeRequest): Promise<DescribeResponse> {
+  return inlineGenerate(req)
+}
+
+async function inlineGenerate(req: DescribeRequest): Promise<DescribeResponse> {
+  const genAI = new GoogleGenerativeAI(req.apiKey)
+  const model = genAI.getGenerativeModel({ model: req.model, systemInstruction: req.prompt })
+
+  const result = await model.generateContent({
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          ...(req.text ? [{ text: `Caption: ${req.text}` }] : []),
+          ...req.media.map((part) => ({
+            inlineData: { mimeType: part.mimeType, data: part.data },
+          })),
+        ],
+      },
+    ],
+  })
+
+  return { text: result.response.text().trim(), usage: toUsage(result.response.usageMetadata) }
+}
+
+/**
  * The models this key can reach that can actually hold a conversation.
  *
  * Plain `fetch` rather than the SDK: `@google/generative-ai` exposes no model
  * listing, and this file is already the only one allowed to know Gemini's wire
  * format. Embedding and vision-only models are excluded by asking Google which
  * ones support `generateContent` rather than by guessing from the name.
+ */
+/*
+ * Gemini answers all three capabilities through `generateContent`, so one list
+ * serves them all and the argument is accepted only to satisfy the shared
+ * module contract. OpenAI's is the one that has to filter.
  */
 export async function listModels(apiKey: string): Promise<ModelChoice[]> {
   const models: ModelChoice[] = []

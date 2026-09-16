@@ -21,6 +21,21 @@ export const PROVIDER_ENV_KEYS: Record<ProviderKind, string> = {
   gemini: 'GEMINI_API_KEY',
 }
 
+/**
+ * The three jobs a model can be picked for on a provider.
+ *
+ * Here rather than beside the vendor translators for the same reason the kinds
+ * are: the provider form needs the list, and importing anything from
+ * `lib/ai/providers/` would drag both SDKs into the browser bundle.
+ */
+export const MODEL_CAPABILITIES = ['text', 'image', 'voice'] as const
+
+export type ModelCapability = (typeof MODEL_CAPABILITIES)[number]
+
+export function isModelCapability(value: unknown): value is ModelCapability {
+  return typeof value === 'string' && (MODEL_CAPABILITIES as readonly string[]).includes(value)
+}
+
 export function isProviderKind(value: unknown): value is ProviderKind {
   return typeof value === 'string' && (PROVIDER_KINDS as readonly string[]).includes(value)
 }

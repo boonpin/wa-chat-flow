@@ -23,7 +23,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     conversation,
     contact,
     waSessionName: waSession?.sessionName ?? null,
-    messages: listMessages(id),
+    // `media_url` points into the gateway's internal address space and is
+    // reachable only with its API key, so the browser is told that a file
+    // exists and nothing else. It fetches the bytes back through
+    // /api/messages/[id]/media.
+    messages: listMessages(id).map(({ mediaUrl, mediaMime, ...row }) => ({
+      ...row,
+      hasMedia: !!mediaUrl,
+      mediaMime,
+    })),
   })
 }
 

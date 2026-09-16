@@ -56,3 +56,53 @@ export interface ModelChoice {
   /** Human-facing name where the vendor supplies one; otherwise the id. */
   label: string
 }
+
+/**
+ * Which job a model is being picked for. The three lists differ: a vendor's
+ * chat models cannot transcribe audio, and its transcription models cannot hold
+ * a conversation, so one catalogue filtered one way would offer an operator a
+ * menu of ways to break the bot.
+ *
+ * Defined in `provider-kinds` so the dashboard can name one without importing
+ * anything that would pull a vendor SDK into the browser.
+ */
+export type { ModelCapability } from '../provider-kinds'
+
+/**
+ * One attachment, ready to hand to a vendor.
+ *
+ * Bytes rather than a URL, always. Both vendors accept inline base64, and the
+ * alternative — publishing a customer's bank statement to somewhere a third
+ * party can fetch it — is a worse answer to an easier problem.
+ */
+export interface MediaPart {
+  mimeType: string
+  /** base64, without a `data:` prefix. */
+  data: string
+}
+
+/**
+ * A request to turn attachments into words, so the text model can read them.
+ *
+ * Not a `ProviderRequest`: there is no history, no tools and no conversation —
+ * this is one question about one set of files, and keeping it separate stops
+ * the reply path's shape from leaking into it.
+ */
+export interface DescribeRequest {
+  prompt: string
+  model: string
+  apiKey: string
+  media: MediaPart[]
+  /** The caption the customer sent with it, when there was one. */
+  text?: string
+}
+
+export interface DescribeResponse {
+  text: string
+  /**
+   * Optional because not every route reports it — a transcription endpoint
+   * bills by audio duration and returns no token counts at all, which is why
+   * the ledger has to tolerate a row of zeroes that is not a failure.
+   */
+  usage?: TokenUsage
+}

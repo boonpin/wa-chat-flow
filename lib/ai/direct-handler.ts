@@ -4,6 +4,7 @@ import { resolveConnection, type BotConnection } from './connection'
 import { ZERO_USAGE, addUsage, recordUsage } from './usage'
 import type { AIHandler, AIInput, AIOutput } from './types'
 import { channelGuidance } from '@/lib/channel'
+import { mediaGuidance } from './media-render'
 import { executeTool } from '@/lib/tools/runner'
 import type { ToolContext, ToolRun } from '@/lib/tools/types'
 
@@ -41,12 +42,14 @@ export class DirectAIHandler implements AIHandler {
     ]
 
     const base = {
-      // The channel note goes after the bot's own instructions: it is about how
-      // to write, never about what to say, and must not outrank the business
-      // context an operator actually maintains.
-      prompt: input.channel
-        ? `${input.bot.prompt}\n\n${channelGuidance(input.channel)}`
-        : input.bot.prompt,
+      // Both notes go after the bot's own instructions: one is about how to
+      // write and the other about how to read, neither is about what to say,
+      // and neither may outrank the business context an operator maintains.
+      prompt: [
+        input.bot.prompt,
+        ...(input.channel ? [channelGuidance(input.channel)] : []),
+        ...(input.hasMedia ? [mediaGuidance()] : []),
+      ].join('\n\n'),
       model: connection.model,
       apiKey: connection.apiKey,
       ...(input.tools?.length ? { tools: input.tools } : {}),

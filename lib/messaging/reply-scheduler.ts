@@ -8,6 +8,7 @@ import {
 } from '@/lib/conversation/service'
 import { normalizeReplyTiming, type ReplyTiming } from '@/lib/settings/reply-timing'
 import { buildContext } from '@/lib/ai/context'
+import { triageIncoming } from './triage'
 import { runAutoReply, type AutoReplySkipReason, type PersistedIncoming } from './incoming-handler'
 
 /**
@@ -57,19 +58,22 @@ export type ScheduleOutcome =
  * Opens or extends this thread's reply window.
  *
  * Called instead of `runAutoReply` for every stored inbound message. The only
- * check made here is the one that cannot change later — whether there is any
- * text to answer. Policy, mode and bot are all re-read when the window elapses,
- * because all three can move while it is open.
+ * check made here is the one that cannot change later — whether this message is
+ * the kind of thing that deserves an answer at all (see ./triage). Policy, mode
+ * and bot are all re-read when the window elapses, because all three can move
+ * while it is open.
  */
 export function scheduleAutoReply(persisted: PersistedIncoming): ScheduleOutcome {
   resumePendingReplies()
 
   const { incoming, conversation } = persisted
 
-  // Media carries no text to reason about — leave those for a human, and do not
-  // let an image extend a window that a question opened.
-  if (incoming.type !== 'text' || !incoming.text?.trim()) {
-    return { status: 'skipped', reason: 'unsupported_type' }
+  // Photos and voice notes do open a window now — they are read by the media
+  // pass before the reply is written. What still does not is anything with
+  // nothing to say: a bare emoji, an unnamed sticker, an empty body.
+  const triage = triageIncoming(incoming)
+  if (triage.action === 'ignore') {
+    return { status: 'skipped', reason: 'not_worth_answering' }
   }
 
   const timing = readReplyTiming()

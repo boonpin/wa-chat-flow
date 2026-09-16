@@ -15,12 +15,17 @@ import type { TokenUsage } from './providers/types'
  * where an operator wants to know what a failing bot is costing.
  */
 
+/** Which pass spent the tokens. See `ai_usage.stage`. */
+export type UsageStage = 'reply' | 'image' | 'voice'
+
 export interface UsageEntry {
   connection: BotConnection
   botId: string
   conversationId: string | null
-  /** Round of the tool loop; 0 is the first ask. */
+  /** Round of the tool loop; 0 is the first ask, and always 0 for a media pass. */
   round: number
+  /** Defaults to `reply`, which is what every call was before media existed. */
+  stage?: UsageStage
   usage?: TokenUsage
   latencyMs: number
   /** Present when the call itself failed. Tokens are then unknown, not zero. */
@@ -49,6 +54,7 @@ export function recordUsage(entry: UsageEntry): string | null {
         outputTokens: entry.usage?.outputTokens ?? 0,
         totalTokens: entry.usage?.totalTokens ?? 0,
         round: entry.round,
+        stage: entry.stage ?? 'reply',
         status: entry.error ? 'failed' : 'ok',
         error: entry.error ?? null,
         latencyMs: entry.latencyMs,

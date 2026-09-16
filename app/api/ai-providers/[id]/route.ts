@@ -23,6 +23,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'model is required' }, { status: 400 })
   }
 
+  // `readProviderInput` can only check the fields this request carried. A PUT
+  // that turns a capability on while leaving its model alone has to be checked
+  // against what is already stored, or it saves a capability that is enabled
+  // and unusable — which fails silently, with a customer waiting.
+  const merged = { ...existing, ...input }
+  if (merged.imageEnabled && !merged.imageModel) {
+    return NextResponse.json(
+      { error: 'Choose a model for reading images, or turn image reading off.' },
+      { status: 400 }
+    )
+  }
+  if (merged.voiceEnabled && !merged.voiceModel) {
+    return NextResponse.json(
+      { error: 'Choose a model for voice notes, or turn voice notes off.' },
+      { status: 400 }
+    )
+  }
+
   db.update(aiProviders)
     .set({ ...input, updatedAt: new Date().toISOString() })
     .where(eq(aiProviders.id, id))

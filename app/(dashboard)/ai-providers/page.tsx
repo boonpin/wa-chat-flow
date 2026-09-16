@@ -84,6 +84,8 @@ export default function AiProvidersPage() {
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium text-ink">{provider.name}</span>
                       <Badge variant="info">{providerLabel(provider.kind)}</Badge>
+                      {provider.imageEnabled && <Badge variant="neutral">Photos</Badge>}
+                      {provider.voiceEnabled && <Badge variant="neutral">Voice</Badge>}
                       {!provider.enabled && <Badge variant="neutral">Turned off</Badge>}
                     </span>
                     <span className="mt-1 block text-sm text-ink-muted">

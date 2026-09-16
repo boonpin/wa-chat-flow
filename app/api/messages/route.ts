@@ -42,6 +42,9 @@ export async function GET(req: Request) {
       message: messages.content,
       status: messages.status,
       error: messages.error,
+      mediaSummary: messages.mediaSummary,
+      mediaStatus: messages.mediaStatus,
+      mediaUrl: messages.mediaUrl,
       createdAt: messages.createdAt,
       contactId: messages.contactId,
       contactName: contacts.name,
@@ -65,7 +68,13 @@ export async function GET(req: Request) {
   const tokens = usageByMessage(rows.map((row) => row.id))
 
   return NextResponse.json({
-    rows: rows.map((row) => ({ ...row, usage: tokens.get(row.id) ?? null })),
+    // Same rule as the Inbox: whether a file exists, never the gateway URL it
+    // lives at. The bytes come back through /api/messages/[id]/media.
+    rows: rows.map(({ mediaUrl, ...row }) => ({
+      ...row,
+      hasMedia: !!mediaUrl,
+      usage: tokens.get(row.id) ?? null,
+    })),
     total,
     page,
     pageSize,

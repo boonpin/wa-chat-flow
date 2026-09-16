@@ -63,6 +63,10 @@ export interface ProviderInput {
   /** Undefined means "leave unchanged"; null means "clear it". */
   apiKey?: string | null
   model?: string
+  imageModel?: string | null
+  imageEnabled?: boolean
+  voiceModel?: string | null
+  voiceEnabled?: boolean
   enabled?: boolean
 }
 
@@ -88,6 +92,21 @@ export function readProviderInput(body: Record<string, unknown>): ProviderInputR
 
   if (typeof body.model === 'string') input.model = body.model.trim()
   if (typeof body.enabled === 'boolean') input.enabled = body.enabled
+
+  if (typeof body.imageModel === 'string') input.imageModel = body.imageModel.trim() || null
+  if (typeof body.voiceModel === 'string') input.voiceModel = body.voiceModel.trim() || null
+  if (typeof body.imageEnabled === 'boolean') input.imageEnabled = body.imageEnabled
+  if (typeof body.voiceEnabled === 'boolean') input.voiceEnabled = body.voiceEnabled
+
+  // A capability switched on with no model is the failure this check exists to
+  // prevent: it reads as working in the dashboard and turns into a customer
+  // being told their photo cannot be read. Refused at the door instead.
+  if (input.imageEnabled && input.imageModel === null) {
+    return { input, error: 'Choose a model for reading images, or turn image reading off.' }
+  }
+  if (input.voiceEnabled && input.voiceModel === null) {
+    return { input, error: 'Choose a model for voice notes, or turn voice notes off.' }
+  }
 
   // A blank key from the edit form means "keep what is stored".
   if (typeof body.apiKey === 'string' && body.apiKey.trim().length > 0) {

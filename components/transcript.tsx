@@ -25,6 +25,85 @@ export interface TranscriptMessage {
   status: 'received' | 'processing' | 'sent' | 'failed'
   error: string | null
   createdAt: string
+  /** What a model made of an attachment, and how that went. Null for text. */
+  mediaSummary?: string | null
+  mediaStatus?: string | null
+  /**
+   * Whether the gateway is still holding the file behind this row.
+   *
+   * A flag rather than a URL: the file lives on WAHA's internal address behind
+   * its API key, so the browser asks this app for it by message id instead.
+   */
+  hasMedia?: boolean
+}
+
+/**
+ * The photo itself, where there is one to show.
+ *
+ * Rendered independently of `mediaStatus`: a bot with image reading switched
+ * off still stores the file, and an operator picking that thread up needs to
+ * see what the customer sent even though nothing described it.
+ *
+ * The gateway prunes old media, so a missing file is ordinary rather than
+ * exceptional — it collapses to nothing and leaves the description in place,
+ * instead of leaving a broken image in the thread.
+ */
+function MediaThumbnail({ message }: { message: TranscriptMessage }) {
+  const [failed, setFailed] = useState(false)
+
+  const viewable = message.messageType === 'image' || message.messageType === 'sticker'
+  if (!viewable || !message.hasMedia || failed) return null
+
+  const isSticker = message.messageType === 'sticker'
+
+  return (
+    <a
+      href={`/api/messages/${message.id}/media`}
+      target="_blank"
+      rel="noreferrer"
+      className="mb-1.5 block"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/api/messages/${message.id}/media`}
+        alt={message.mediaSummary?.trim() || 'Photo the customer sent'}
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className={
+          isSticker
+            ? 'h-24 w-24 object-contain'
+            : 'max-h-64 w-auto max-w-full rounded-md border border-line-soft object-contain'
+        }
+      />
+    </a>
+  )
+}
+
+/**
+ * How an attachment is reported to the operator.
+ *
+ * Shown apart from the message body and never in the same voice, because the
+ * two are different claims: the body is what the customer wrote, this is what a
+ * model guessed. An operator picking up a thread has to be able to tell which
+ * of the two the bot was actually answering.
+ */
+function mediaNote(message: TranscriptMessage): string | null {
+  switch (message.mediaStatus) {
+    case 'described':
+      return message.mediaSummary?.trim() || null
+    case 'pending':
+      return 'Not read yet'
+    case 'skipped':
+      return 'Not read — more attachments arrived at once than the bot reads'
+    case 'too_large':
+      return 'Not read — the file was too large'
+    case 'unsupported':
+      return 'Not read — this provider is not set up to read this kind of attachment'
+    case 'failed':
+      return `Could not be read${message.error ? ` — ${message.error}` : ''}`
+    default:
+      return null
+  }
 }
 
 const SENDER_LABEL: Record<TranscriptMessage['senderType'], string | null> = {
@@ -119,6 +198,7 @@ function MessageBubble({ message }: { message: TranscriptMessage }) {
 
   const onGreen = !incoming && message.senderType === 'human' && !failed
   const metaTone = onGreen ? 'text-white/75' : 'text-ink-soft'
+  const reading = mediaNote(message)
 
   return (
     <div className={`flex px-2 ${incoming ? 'justify-start' : 'justify-end'}`}>
@@ -133,6 +213,8 @@ function MessageBubble({ message }: { message: TranscriptMessage }) {
           </p>
         )}
 
+        <MediaThumbnail message={message} />
+
         {message.messageType !== 'text' && (
           <p className={`mb-1 text-xs ${metaTone}`}>
             {message.messageType === 'unknown'
@@ -145,8 +227,17 @@ function MessageBubble({ message }: { message: TranscriptMessage }) {
           <p className="text-base leading-6 break-words whitespace-pre-wrap sm:text-sm sm:leading-5">
             {message.content}
           </p>
-        ) : (
+        ) : reading ? null : (
           <p className={`text-sm italic ${metaTone}`}>No text content</p>
+        )}
+
+        {reading && (
+          <p
+            className={`mt-1 border-l-2 border-current/25 pl-2 text-sm break-words whitespace-pre-wrap italic ${metaTone}`}
+          >
+            <span className="not-italic">What the AI read: </span>
+            {reading}
+          </p>
         )}
 
         <div className={`mt-1 flex items-center justify-end gap-2 text-xs ${metaTone}`}>

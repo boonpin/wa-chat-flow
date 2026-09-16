@@ -3,7 +3,7 @@ import { getSession } from '@/lib/auth/session'
 import { aiKeys } from '@/lib/config'
 import { getAiProvider } from '@/lib/ai/connection'
 import { getProviderModule } from '@/lib/ai/providers'
-import { PROVIDER_ENV_KEYS, isProviderKind } from '@/lib/ai/provider-kinds'
+import { PROVIDER_ENV_KEYS, isModelCapability, isProviderKind } from '@/lib/ai/provider-kinds'
 
 /**
  * Asks the vendor which models this key can actually use.
@@ -24,6 +24,11 @@ export async function POST(req: NextRequest) {
   if (!isProviderKind(kind)) {
     return NextResponse.json({ error: 'kind must be openai or gemini' }, { status: 400 })
   }
+
+  // Which list to return. The three differ: a transcription model cannot hold a
+  // conversation and a chat model cannot transcribe, so offering one catalogue
+  // for all three jobs would be offering ways to break the bot.
+  const capability = isModelCapability(body.capability) ? body.capability : 'text'
 
   const typed = typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
   const providerId = typeof body.providerId === 'string' ? body.providerId : ''
@@ -54,7 +59,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const models = await getProviderModule(kind).listModels(apiKey)
+    const models = await getProviderModule(kind).listModels(apiKey, capability)
     return NextResponse.json({ models, source })
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)

@@ -71,6 +71,13 @@
       "when": 1789527691754,
       "tag": "0009_pink_red_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1789540908972,
+      "tag": "0010_awesome_matthew_murdock",
+      "breakpoints": true
     }
   ]
 }

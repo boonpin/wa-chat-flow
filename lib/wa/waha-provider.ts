@@ -1,6 +1,7 @@
 import { waha } from '@/lib/config'
 import { fromChatId, toChatId } from './phone'
 import type {
+  DownloadedMedia,
   SendResult,
   SendTextInput,
   SessionInfo,
@@ -19,6 +20,16 @@ import type {
  */
 
 const REQUEST_TIMEOUT_MS = 30_000
+
+/**
+ * Ceiling on an attachment we are willing to pull into memory.
+ *
+ * WhatsApp compresses photos hard — a typical one is well under a megabyte —
+ * so anything approaching this is a document or a video, neither of which we
+ * send to a model. Refusing early is what stops one oversized file from taking
+ * the process down with it.
+ */
+const MAX_MEDIA_BYTES = 16 * 1024 * 1024
 
 /** WAHA session engine states → our normalised statuses. */
 const STATUS_MAP: Record<string, SessionStatus> = {
@@ -317,6 +328,41 @@ export class WahaProvider implements WhatsAppProvider {
 
     lidCache.set(cacheKey, phone)
     return phone
+  }
+
+  /**
+   * Pulls an attachment's bytes out of WAHA.
+   *
+   * Only the path of the given URL is used; the host always comes from
+   * `WAHA_BASE_URL`. WAHA builds these URLs from whatever it believes its own
+   * address to be, which inside Compose is frequently one this container cannot
+   * reach — and pinning the host also means a forged webhook cannot talk us
+   * into fetching an arbitrary address with our API key attached.
+   */
+  async downloadMedia(url: string): Promise<DownloadedMedia> {
+    const target = new URL(url, waha.baseUrl)
+    const response = await request<Response>(
+      'GET',
+      `${target.pathname}${target.search}`,
+      undefined,
+      { accept: '*/*', raw: true }
+    )
+
+    const declared = Number(response.headers.get('content-length') ?? '')
+    if (Number.isFinite(declared) && declared > MAX_MEDIA_BYTES) {
+      throw new WahaError(`Attachment is ${Math.round(declared / 1_048_576)}MB, too large to read`)
+    }
+
+    const data = Buffer.from(await response.arrayBuffer())
+    if (data.length > MAX_MEDIA_BYTES) {
+      throw new WahaError(`Attachment is ${Math.round(data.length / 1_048_576)}MB, too large to read`)
+    }
+    if (data.length === 0) throw new WahaError('Attachment was empty')
+
+    return {
+      data,
+      mimeType: (response.headers.get('content-type') ?? 'application/octet-stream').split(';')[0].trim(),
+    }
   }
 
   /** Returns the raw session, or null when WAHA has never seen it. */

@@ -61,6 +61,9 @@ interface EventRow {
   message: string
   status: string
   error: string | null
+  /** What a model made of an attachment, and how that went. Null for text. */
+  mediaSummary: string | null
+  mediaStatus: string | null
   createdAt: string
   contactId: string
   contactName: string | null
@@ -68,11 +71,22 @@ interface EventRow {
   usage: MessageUsage | null
 }
 
+/** Why an attachment has no description, in words an operator can act on. */
+const MEDIA_STATUS_TEXT: Record<string, string> = {
+  pending: 'Not read yet.',
+  skipped: 'Not read — more attachments arrived at once than the bot reads in one go.',
+  too_large: 'Not read — the file was too large.',
+  unsupported:
+    'Not read — the AI provider behind this bot is not set up to read this kind of attachment.',
+  failed: 'Could not be read. The error is shown above.',
+}
+
 interface EventDetail extends EventRow {
   usage: (MessageUsage & { providerName: string | null }) | null
   usageCalls: UsageCall[]
   conversationId: string
   provider: string
+  mediaMime: string | null
   providerMessageId: string | null
   toolInvocationId: string | null
   conversationMode: string | null
@@ -97,6 +111,9 @@ function describeEvent(row: EventRow): string {
   }
   if (row.senderType === 'system') return row.error ?? 'System event'
   if (row.message) return row.message
+  // An attachment's own description is the closest thing it has to a body, and
+  // "image attachment" told an operator scanning the list nothing at all.
+  if (row.mediaStatus === 'described' && row.mediaSummary) return row.mediaSummary
   return row.messageType === 'text' ? 'No text content' : `${row.messageType} attachment`
 }
 
@@ -411,6 +428,21 @@ function EventDrawer({
             </section>
           )}
 
+          {data.mediaStatus && data.mediaStatus !== 'ignored' && (
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-ink">Attachment</h3>
+              <p className="rounded-md border border-line bg-inset px-3 py-2.5 text-sm leading-5 break-words whitespace-pre-wrap text-ink">
+                {data.mediaStatus === 'described' && data.mediaSummary
+                  ? data.mediaSummary
+                  : MEDIA_STATUS_TEXT[data.mediaStatus] ?? data.mediaStatus}
+              </p>
+              <p className="mt-2 text-xs leading-4 text-ink-soft">
+                This is what the image or voice model made of the file — not something the customer
+                typed. It is what the reply was written from.
+              </p>
+            </section>
+          )}
+
           <section>
             <h3 className="mb-2 text-sm font-semibold text-ink">Customer</h3>
             <KeyValues
@@ -446,6 +478,7 @@ function EventDrawer({
                 ['Direction', data.direction === 'incoming' ? 'Received from customer' : 'Sent to customer'],
                 ['Sender', sender?.label ?? data.senderType],
                 ['Type', data.messageType],
+                ...(data.mediaMime ? [['File type', data.mediaMime] as [string, string]] : []),
               ]}
             />
             {data.status === 'sent' && (

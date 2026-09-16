@@ -13,6 +13,8 @@ pnpm db:generate  # Generate a migration after editing lib/db/schema.ts
 pnpm db:migrate   # Apply pending migrations without booting the app
 pnpm seed         # Create/reset the admin account (needs ADMIN_EMAIL + ADMIN_PASSWORD)
 pnpm backup       # Back up the SQLite DB and WAHA session storage
+pnpm test:format  # Fixtures for lib/channel/ (Markdown → WhatsApp)
+pnpm test:media   # Fixtures for the attachment rules (triage + rendering)
 ```
 
 Package manager: **pnpm** (pnpm-lock.yaml present).
@@ -68,7 +70,10 @@ replaced without touching business logic:
 - [lib/messaging/outgoing.ts](lib/messaging/outgoing.ts) — all outbound sends; writes the row before sending so failures stay visible, and rewrites model-authored Markdown for the channel on the way past
 - [lib/channel/](lib/channel/) — `types.ts` (the `Channel` union and the formatter contract), `whatsapp.ts` (Markdown → `*bold*`, `_italic_`, flattened tables), `index.ts` (`formatForChannel`, `channelGuidance`)
 - [lib/conversation/service.ts](lib/conversation/service.ts) — threads, modes, statuses, the Inbox queries
-- [lib/ai/context.ts](lib/ai/context.ts) — conversation memory (last 20 text messages)
+- [lib/ai/context.ts](lib/ai/context.ts) — conversation memory (last 20 messages), and the split between the unanswered burst and history
+- [lib/ai/media.ts](lib/ai/media.ts) — the **understand pass**: downloads attachments and turns them into words before the reply is written
+- [lib/ai/media-render.ts](lib/ai/media-render.ts) — the caps, and how an attachment is worded for the model. No database, no network, no key — which is what makes `pnpm test:media` possible
+- [lib/messaging/triage.ts](lib/messaging/triage.ts) — whether an inbound message is worth waking a reply for
 - [lib/ai/direct-handler.ts](lib/ai/direct-handler.ts) — LLM call **and the tool loop**; providers under `lib/ai/providers/` are dumb translators between `ProviderRequest` and each SDK's wire format
 - [lib/ai/connection.ts](lib/ai/connection.ts) — bot → AI account (vendor, key, model), with the env key as the fallback
 - [lib/ai/provider-kinds.ts](lib/ai/provider-kinds.ts) — the vendor list and its labels, free of SDK imports so the dashboard can import it
@@ -108,9 +113,13 @@ conversation; resolving it and receiving another message starts a new one.
 - `conversations.status` — `open` or `resolved`
 - `messages.sender_type` — `customer` | `ai` | `human` | `system`
 - `messages.status` — `received` | `processing` | `sent` | `failed`
-- `messages.message_type` — `text` | `image` | `audio` | `document` | `tool` | `unknown`.
-  A `tool` row is the audit trail for one tool call; `buildHistory` filters on
-  `text`, so it never re-enters the model's memory.
+- `messages.message_type` — `text` | `image` | `sticker` | `audio` | `video` |
+  `document` | `tool` | `unknown`. A `tool` row is the audit trail for one tool
+  call and never re-enters the model's memory. **`sticker` and `video` are not
+  `image`** — three different policies hang off the distinction, and folding
+  them together is what made the old code unable to tell them apart.
+- `messages.media_summary` / `.media_status` — what a model made of an
+  attachment, and how that went. See **Attachments** below.
 - Unique index on `(provider, provider_message_id)` is the deduplication guard —
   webhook delivery is at-least-once, so **never remove it**.
 
@@ -159,6 +168,76 @@ time, so it sticks for the whole thread; `runAutoReply` re-checks it because the
 policy can tighten while the reply window is open. Both halves are
 needed — **changing one without the other silently breaks the mode.**
 
+### Attachments
+
+A reply answers what the customer *sent*, which is not always what they typed.
+Photos and voice notes are turned into words by a second model before the text
+model ever sees the thread.
+
+```
+burst assembled → media pass (image/voice model) → summary on the row → reply pass (text model)
+```
+
+The pass runs inside `runAutoReply`, never in the webhook: a vision call takes
+seconds and the webhook has milliseconds. It writes what it learns back to
+`messages.media_summary`, which makes that column three things at once — the
+cache (an attachment is never sent to a vendor twice, however long the thread
+runs), the audit trail (the Inbox shows the operator what the bot thought it was
+looking at), and the memory (a photo from six turns ago still reads, for free).
+
+- **`media_summary` is not `content`.** `content` is what the customer typed —
+  the caption. The summary is what a model guessed. The Inbox renders them
+  differently on purpose, and **never as the customer's words**.
+- **`media_status` is the whole state machine**: `pending` → `described`, or one
+  of `unsupported` (the provider cannot read this kind), `too_large`, `failed`,
+  `skipped` (past the per-burst cap) and `ignored` (an unnamed sticker — not a
+  failure, just something nobody should ever be told about). Each produces
+  different words, because "send a smaller one" and "send it again" are advice
+  the customer can act on and "something went wrong" is not.
+- **Capabilities live on the provider, not the bot.** `image_model` /
+  `image_enabled` and `voice_model` / `voice_enabled` sit beside `model` (which
+  is the text model, and mandatory). `resolveCapability()` returns **null**
+  rather than throwing: disabled, no model, provider off, no key and a vendor
+  that cannot do it at all collapse into one answer, because a caller that
+  handled four of those and missed the fifth would answer a voice note as though
+  silence had arrived. **Never read `image_model` off a provider directly.**
+- **Not supported is a note to the bot, not a canned string.** An unreadable
+  attachment reaches the model as `[The customer sent a video. You cannot watch
+  videos. …]`, so the refusal comes out in the bot's own voice and the thread's
+  own language. In *history* the same row loses its instruction and reads in the
+  past tense — otherwise the bot apologises for the same video on every turn for
+  the rest of the conversation. `mediaGuidance()` is the other half: a model
+  never told what `[Photo]` means will repeat it to a customer.
+- **The caps are `MAX_IMAGES_PER_BURST` (4) and `MAX_VOICE_NOTES_PER_BURST`
+  (3)**, applied to *distinct* attachments — identical bytes are deduplicated by
+  hash first, because paying twice for one photo is not a judgement call.
+  Whatever is left over is counted in one sentence by `renderSkipped`, not
+  apologised for four times.
+- **The Inbox shows the picture through
+  [app/api/messages/[id]/media/route.ts](app/api/messages/[id]/media/route.ts).**
+  `media_url` points into the gateway's internal address space behind its API
+  key, so it is **never sent to the browser** — the client is told only
+  `hasMedia: true` and asks this app for the bytes by message id. The route
+  serves `image/`, `audio/` and `video/` **only**: echoing back a customer's
+  `.html` attachment with its own content type would be stored XSS against a
+  logged-in operator, which is also why it sends `nosniff` and a `default-src
+  'none'; sandbox` CSP. A thumbnail renders regardless of `media_status` —
+  a bot with image reading switched off still stored the file, and the operator
+  still needs to see it.
+- **Bytes, never a URL.** Both vendors take inline base64, so a customer's bank
+  statement never has to exist anywhere a third party can fetch it.
+  `downloadMedia` uses only the *path* of WAHA's URL and always its own
+  `WAHA_BASE_URL` host — which also means a forged webhook cannot talk the app
+  into fetching an arbitrary address with the API key attached.
+
+`lib/messaging/triage.ts` decides what opens a reply window at all. Photos, voice
+notes, video and documents all do — the last two so the refusal gets said out
+loud. Emoji-only messages and unnamed stickers do **not**: they are stored, and
+they are perfectly good context inside a window someone else opened, but they
+cannot start a conversation. The emoji test deliberately avoids
+`\p{Emoji_Component}`, which matches bare digits — an order number going
+unanswered is a customer going unanswered.
+
 ### Token accounting
 
 `ai_usage` is one row per **API call**, not per reply: the tool loop asks the
@@ -166,6 +245,14 @@ model again after every round, and each of those asks is billed. Rows are
 written by `DirectAIHandler` as each call returns, which is why a reply that
 dies on round two still accounts for round one — the case where an operator most
 wants the number.
+
+`stage` says which pass spent them — `reply`, `image` or `voice`. Without it a
+transcription model's tokens are indistinguishable from the chat model's in the
+provider totals and the impact report, and `round` cannot separate them: it is
+always 0 for a media pass. OpenAI's transcription endpoint reports no token
+counts at all, so those rows land with zeroes and `status = 'ok'` — a successful
+call that simply cannot be priced from tokens, which is not the same as a call
+that did nothing.
 
 `kind` and `model` are **snapshots, not joins**. What a call cost stays true
 after the provider is edited or the bot is repointed, and a deleted provider
@@ -226,4 +313,8 @@ rejected. One is fixed in the dashboard, the other by retrying.
   `syncError` for the operator. The details are already on disk, so re-asking
   the customer would be the worse outcome. `recordToolRun` logs the row as
   `failed` even so — the model's view and the operator's view differ on purpose.
+- **An attachment is never described twice.** The summary on the row is the
+  cache. Re-describing on every turn would bill an operator for a photo the bot
+  has already read, so `describePendingMedia` only touches `pending` rows — and
+  only those inside the burst being answered, never the whole thread.
 - **Inbound addresses:** one-to-one chats arrive as either `@c.us` (phone number) or `@lid` (linked identity — an opaque id, *not* a phone number). Both are real customers. A `@lid` is resolved to its phone via `provider.resolveLid()` before anything is stored; never treat its digits as a number. Groups (`@g.us`), channels (`@newsletter`) and `status@broadcast` are dropped.

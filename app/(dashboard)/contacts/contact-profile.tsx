@@ -42,6 +42,9 @@ interface MessagePage {
     message: string
     status: TranscriptMessage['status']
     error: string | null
+    mediaSummary: string | null
+    mediaStatus: string | null
+    hasMedia: boolean
     createdAt: string
   }[]
   total: number
@@ -109,6 +112,9 @@ export function ContactProfile({
       content: row.message,
       status: row.status,
       error: row.error,
+      mediaSummary: row.mediaSummary,
+      mediaStatus: row.mediaStatus,
+      hasMedia: row.hasMedia,
       createdAt: row.createdAt,
     }))
     .reverse()
