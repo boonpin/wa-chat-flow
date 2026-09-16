@@ -15,6 +15,7 @@ import {
   KeyIcon,
   MenuIcon,
   OverviewIcon,
+  ReportIcon,
   ReplySettingsIcon,
   SettingsIcon,
   SignOutIcon,
@@ -50,6 +51,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: 'Work',
     items: [
       { href: '/dashboard', label: 'Overview', icon: <OverviewIcon /> },
+      { href: '/reports/impact', label: 'Impact report', icon: <ReportIcon /> },
       { href: '/inbox', label: 'Inbox', icon: <InboxIcon /> },
       { href: '/contacts', label: 'Contacts', icon: <ContactsIcon /> },
     ],

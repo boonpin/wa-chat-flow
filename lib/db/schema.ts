@@ -30,6 +30,30 @@ export const aiProviders = sqliteTable('ai_providers', {
   updatedAt: text('updated_at').notNull(),
 })
 
+/**
+ * Versioned token prices used by the impact report.
+ *
+ * Rates are stored in millionths of the report currency per one million
+ * tokens. Keeping both sides integral avoids floating-point drift while still
+ * allowing prices below one cent. The first rate for a model is backdated by
+ * the settings API so existing usage can be estimated; later changes begin at
+ * the time they are saved.
+ */
+export const aiModelRates = sqliteTable(
+  'ai_model_rates',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind').notNull(),
+    model: text('model').notNull(),
+    currency: text('currency').notNull(),
+    inputRateMicros: integer('input_rate_micros').notNull(),
+    outputRateMicros: integer('output_rate_micros').notNull(),
+    effectiveFrom: text('effective_from').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [index('idx_ai_model_rates_lookup').on(t.kind, t.model, t.currency, t.effectiveFrom)]
+)
+
 export const aiBots = sqliteTable('ai_bots', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -147,6 +171,12 @@ export const systemSettings = sqliteTable('system_settings', {
    */
   replyWindowSeconds: integer('reply_window_seconds').notNull().default(8),
   replyMaxWaitSeconds: integer('reply_max_wait_seconds').notNull().default(45),
+  /** Minutes an operator says one manual reply normally takes. Null = unknown. */
+  manualReplyMinutes: integer('manual_reply_minutes'),
+  /** Hourly labor cost in the smallest currency unit. Null = unknown. */
+  laborCostMinor: integer('labor_cost_minor'),
+  /** ISO 4217 code used for labor value and model rates in the impact report. */
+  reportCurrency: text('report_currency').notNull().default('MYR'),
 })
 
 export const blastCampaigns = sqliteTable('blast_campaigns', {
