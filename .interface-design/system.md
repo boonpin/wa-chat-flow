@@ -62,3 +62,23 @@ copy without changing the backend would make the app lie.
 - `systemSettings.defaultBotId` and the legacy `aiBots.isDefault` flag can
   disagree. `resolveFallbackBot()` reports which one actually answers and
   surfaces the conflict instead of silently picking one.
+
+## Impact report pattern
+
+Adopted 16 September 2026. The human is an SME owner checking whether automation
+is worth keeping. The report should feel like a short evidence review, not an
+advertising dashboard.
+
+- **Focal pattern:** AI reply turns → estimated time → labor value − AI cost →
+  estimated net savings. Recorded facts and estimates remain visually and
+  verbally distinct, and every estimate names its assumptions.
+- **Metric figure:** 12px/500 secondary label · 28px/600 tabular primary value ·
+  12–13px supporting or comparison copy. Do not uppercase labels.
+- **Period control:** real links for 7, 30 and 90 days, 40px high. The current
+  range uses the selected surface, stronger weight and `aria-current`.
+- **Estimate notice:** amber inset surface, plain-language reason and one direct
+  action. Missing prices are incomplete data, never zero cost.
+- **Breakdown:** name/purpose first, numeric columns right-aligned, deleted
+  records remain visible, and incomplete costs are marked in text.
+- **Panels:** quiet border, no lift, 16px phone / 20px desktop padding. Charts
+  use semantic surfaces and include a readable table equivalent.
