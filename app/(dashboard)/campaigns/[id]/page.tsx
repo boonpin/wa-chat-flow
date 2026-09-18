@@ -146,7 +146,7 @@ export default function CampaignDetailPage() {
       <PageHeader
         title={campaign.name}
         description={`Sent from ${campaign.waSessionName ?? 'an unknown number'} · one message every ${campaign.delaySeconds} ${plural(campaign.delaySeconds, 'second')}`}
-        back={{ href: '/campaigns', label: 'Campaigns' }}
+        back={{ href: '/campaigns', label: "Broadcasts" }}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <CampaignStatusBadge status={campaign.status} />

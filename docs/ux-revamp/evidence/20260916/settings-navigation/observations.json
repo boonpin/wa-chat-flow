@@ -1,0 +1,99 @@
+{
+  "checks": [
+    "Settings tab navigates and selects AI agents",
+    "Settings tab navigates and selects WhatsApp numbers",
+    "Settings tab navigates and selects Automatic replies",
+    "Settings tab navigates and selects Customer details",
+    "Settings tab navigates and selects Savings estimates",
+    "Settings tab navigates and selects Technical settings",
+    "Settings tab navigates and selects Overview",
+    "Nested Settings route selects AI agents: /bots/new",
+    "Nested Settings route selects AI agents: /bots/nav-agent",
+    "Nested Settings route selects AI agents: /settings/business?botId=nav-agent",
+    "Nested Settings route selects Technical settings: /ai-providers",
+    "Nested Settings route selects Technical settings: /settings/access",
+    "Nested Settings route selects Technical settings: /activity",
+    "Technical hub links to AI connections with Settings navigation retained",
+    "Daily page omits Settings navigation: /dashboard",
+    "Daily page omits Settings navigation: /contacts",
+    "Daily page omits Settings navigation: /campaigns",
+    "Daily page omits Settings navigation: /help",
+    "Daily page omits Settings navigation: /inbox",
+    "Settings links activate by keyboard"
+  ],
+  "observations": [
+    {
+      "name": "overview",
+      "width": 1440,
+      "scroll": 1440,
+      "viewport": 1440
+    },
+    {
+      "name": "agents",
+      "width": 1440,
+      "scroll": 1440,
+      "viewport": 1440
+    },
+    {
+      "name": "technical",
+      "width": 1440,
+      "scroll": 1440,
+      "viewport": 1440
+    },
+    {
+      "name": "whatsapp",
+      "width": 1440,
+      "scroll": 1440,
+      "viewport": 1440
+    },
+    {
+      "name": "overview",
+      "width": 390,
+      "scroll": 390,
+      "viewport": 390
+    },
+    {
+      "name": "agents",
+      "width": 390,
+      "scroll": 390,
+      "viewport": 390
+    },
+    {
+      "name": "technical",
+      "width": 390,
+      "scroll": 390,
+      "viewport": 390
+    },
+    {
+      "name": "whatsapp",
+      "width": 390,
+      "scroll": 390,
+      "viewport": 390
+    },
+    {
+      "name": "overview",
+      "width": 320,
+      "scroll": 320,
+      "viewport": 320
+    },
+    {
+      "name": "agents",
+      "width": 320,
+      "scroll": 320,
+      "viewport": 320
+    },
+    {
+      "name": "technical",
+      "width": 320,
+      "scroll": 320,
+      "viewport": 320
+    },
+    {
+      "name": "whatsapp",
+      "width": 320,
+      "scroll": 320,
+      "viewport": 320
+    }
+  ],
+  "errors": []
+}

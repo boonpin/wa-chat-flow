@@ -284,7 +284,7 @@ export function ConnectDrawer({
               about whether AI replies are enabled or a bot exists. */}
           <p className="text-sm leading-5 text-ink-muted">
             This does not switch on automatic replies. Whether the AI answers still depends on your
-            reply settings, the conversation’s mode and an available bot.
+            reply settings, the conversation’s mode and an available assistant.
           </p>
           <div className="flex justify-end">
             <Button onClick={onClose}>Done</Button>

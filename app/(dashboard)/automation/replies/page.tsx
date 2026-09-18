@@ -23,7 +23,11 @@ import {
   useAsyncData,
   useToast,
 } from '@/components/ui'
-import { resolveFallbackBot, useWorkspaceStatus, type BotSummary } from '@/components/workspace-status'
+import {
+  resolveFallbackBot,
+  useWorkspaceStatus,
+  type BotSummary,
+} from '@/components/workspace-status'
 import {
   AUTO_REPLY_MODES,
   AUTO_REPLY_MODE_COPY,
@@ -47,16 +51,13 @@ export default function ReplySettingsPage() {
   const { toast } = useToast()
   const workspace = useWorkspaceStatus()
 
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      const [settings, bots] = await Promise.all([
-        request<Settings>('/api/settings', { signal }),
-        request<BotSummary[]>('/api/bots', { signal }),
-      ])
-      return { settings, bots }
-    },
-    []
-  )
+  const load = useCallback(async (signal: AbortSignal) => {
+    const [settings, bots] = await Promise.all([
+      request<Settings>('/api/settings', { signal }),
+      request<BotSummary[]>('/api/bots', { signal }),
+    ])
+    return { settings, bots }
+  }, [])
   const { data, loading, error, refresh } = useAsyncData(load, [load])
 
   // Null means "no local edits" — the form then shows exactly what the server
@@ -71,7 +72,7 @@ export default function ReplySettingsPage() {
   const draft = edits ?? saved
   const dirty = useMemo(
     () => !!saved && !!edits && JSON.stringify(saved) !== JSON.stringify(edits),
-    [saved, edits]
+    [saved, edits],
   )
 
   useEffect(() => {
@@ -82,9 +83,10 @@ export default function ReplySettingsPage() {
   }, [dirty])
 
   const fallback = resolveFallbackBot(
-    data ? { channels: [], settings: data.settings, bots: data.bots } : null
+    data ? { channels: [], settings: data.settings, bots: data.bots } : null,
   )
-  const savedPolicy = AUTO_REPLY_MODE_COPY[saved?.autoReplyMode ?? 'off'] ?? AUTO_REPLY_MODE_COPY.off
+  const savedPolicy =
+    AUTO_REPLY_MODE_COPY[saved?.autoReplyMode ?? 'off'] ?? AUTO_REPLY_MODE_COPY.off
   const savedTiming = {
     windowSeconds: saved?.replyWindowSeconds ?? 0,
     maxWaitSeconds: saved?.replyMaxWaitSeconds ?? 0,
@@ -119,8 +121,8 @@ export default function ReplySettingsPage() {
   return (
     <PageBody width="form">
       <PageHeader
-        title="Reply settings"
-        description="One policy decides how much the AI is allowed to answer, and one bot answers whatever has no bot of its own."
+        title="Automatic replies"
+        description="One policy decides how much the AI is allowed to answer, and one agent answers whatever has no agent of its own."
         back={{ href: '/settings', label: 'Settings' }}
       />
 
@@ -149,15 +151,17 @@ export default function ReplySettingsPage() {
                   {savedPolicy.label}
                 </Badge>
               </StatusFact>
-              <StatusFact label="Default bot">
+              <StatusFact label="Default agent">
                 <span className="font-medium">{fallback.bot?.name ?? 'None'}</span>
                 {fallback.source === 'flag' && (
-                  <span className="text-xs text-ink-soft">from the bot’s own default flag</span>
+                  <span className="text-xs text-ink-soft">from the agent’s own default flag</span>
                 )}
               </StatusFact>
               <StatusFact label="Reply timing" className="sm:col-span-2">
                 <span className="font-medium">
-                  {repliesPerMessage(savedTiming) ? 'One reply per message' : `Waits ${savedTiming.windowSeconds}s`}
+                  {repliesPerMessage(savedTiming)
+                    ? 'One reply per message'
+                    : `Waits ${savedTiming.windowSeconds}s`}
                 </span>
                 <span className="text-xs text-ink-soft">{describeReplyTiming(savedTiming)}</span>
               </StatusFact>
@@ -165,11 +169,11 @@ export default function ReplySettingsPage() {
           </Panel>
 
           {fallback.conflict && fallback.bot && (
-            <Banner tone="warning" title="Two bots are marked as the default">
+            <Banner tone="warning" title="Two agents are marked as the default">
               This page selects <strong>{fallback.bot.name}</strong>, while{' '}
               <strong>{fallback.conflict.name}</strong> still carries an older default flag from a
               previous version. <strong>{fallback.bot.name}</strong> is the one that answers. Saving
-              a default here clears the flag on every other bot.
+              a default here clears the flag on every other agent.
             </Banner>
           )}
 
@@ -181,7 +185,7 @@ export default function ReplySettingsPage() {
 
           <FormSection
             title="How much the AI answers"
-            scope="Applies to every number. Messages always arrive and you can always reply by hand; campaigns are unaffected."
+            scope="Applies to every number. Messages always arrive and you can always reply by hand; broadcasts are unaffected."
           >
             <RadioCards<AutoReplyMode>
               legend="How much the AI answers"
@@ -224,7 +228,7 @@ export default function ReplySettingsPage() {
           >
             <p className="text-sm text-ink-muted">
               People type in bursts — “hi”, “im interested”, “whats the price” — and that is one
-              question, not three. The bot waits for a pause before answering, then answers
+              question, not three. The agent waits for a pause before answering, then answers
               everything said in the meantime in a single reply.
             </p>
 
@@ -239,7 +243,7 @@ export default function ReplySettingsPage() {
                 onChange={(e) =>
                   setEdits({ ...draft, replyWindowSeconds: e.target.valueAsNumber || 0 })
                 }
-                hint={`Seconds of quiet before the bot answers. Each new message restarts it. 0–${REPLY_WINDOW_BOUNDS.max}.`}
+                hint={`Seconds of quiet before the agent answers. Each new message restarts it. 0–${REPLY_WINDOW_BOUNDS.max}.`}
               />
               <Input
                 label="Never wait longer than"
@@ -277,16 +281,16 @@ export default function ReplySettingsPage() {
           </FormSection>
 
           <FormSection
-            title="Default bot"
-            scope="Used when a conversation and its customer both have no bot of their own."
+            title="Default agent"
+            scope="Used when a conversation and its customer both have no agent of their own."
           >
             <Select
-              label="Bot"
+              label="Agent"
               value={draft.defaultBotId ?? ''}
               onChange={(e) => setEdits({ ...draft, defaultBotId: e.target.value || null })}
-              hint="A bot that is turned off is skipped even if it is chosen here."
+              hint="A agent that is turned off is skipped even if it is chosen here."
             >
-              <option value="">No default bot</option>
+              <option value="">No default agent</option>
               {bots.map((bot) => (
                 <option key={bot.id} value={bot.id}>
                   {bot.name}
@@ -296,8 +300,8 @@ export default function ReplySettingsPage() {
             </Select>
 
             {draft.defaultBotId === null && (
-              <Banner tone="warning" title="No default bot selected">
-                Conversations without their own bot will not receive an AI reply.{' '}
+              <Banner tone="warning" title="No default agent selected">
+                Conversations without their own agent will not receive an AI reply.{' '}
                 {fallback.source === 'flag' && fallback.bot
                   ? `“${fallback.bot.name}” still carries an older default flag and would answer until that flag is cleared.`
                   : ''}
@@ -306,17 +310,20 @@ export default function ReplySettingsPage() {
 
             {draftBot && !draftBot.enabled && (
               <Banner tone="warning" title={`“${draftBot.name}” is turned off`}>
-                A bot that is turned off is never selected. Turn it on in the bot editor for this
-                default to have any effect.{' '}
-                <Link href={`/bots/${draftBot.id}`} className="font-semibold underline underline-offset-2">
-                  Open the bot
+                A agent that is turned off is never selected. Turn it on in the agent editor for
+                this default to have any effect.{' '}
+                <Link
+                  href={`/bots/${draftBot.id}`}
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Open the agent
                 </Link>
               </Banner>
             )}
 
             {bots.length === 0 && (
               <p className="text-sm text-ink-muted">
-                No bots exist yet.{' '}
+                No agents exist yet.{' '}
                 <Link href="/bots/new" className="font-medium text-action hover:underline">
                   Create one
                 </Link>{' '}
@@ -344,13 +351,13 @@ export default function ReplySettingsPage() {
                     detail: 'Set per conversation in Inbox, and inherited from the customer.',
                   },
                   {
-                    label: 'The message is text the bot can read',
+                    label: 'The message is text the agent can read',
                     detail: 'Images, audio and documents are stored but not answered.',
                   },
                   {
-                    label: 'A bot is available',
+                    label: 'A agent is available',
                     detail:
-                      'The conversation’s bot, then the customer’s bot, then this default. Bots that are turned off are skipped.',
+                      'The conversation’s agent, then the customer’s agent, then this default. Agents that are turned off are skipped.',
                   },
                   {
                     label: 'The customer has finished typing',
@@ -359,7 +366,7 @@ export default function ReplySettingsPage() {
                   {
                     label: 'Nobody answered first',
                     detail:
-                      'If you reply from the Inbox while the bot is waiting, the bot stays quiet — your reply is the answer.',
+                      'If you reply from the Inbox while the agent is waiting, the agent stays quiet — your reply is the answer.',
                   },
                 ].map((step, i) => (
                   <li key={step.label} className="flex items-start gap-3">

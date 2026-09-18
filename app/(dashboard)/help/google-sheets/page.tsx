@@ -51,7 +51,7 @@ export default async function GoogleSheetsGuide() {
       <PageHeader
         title="Connect a Google Sheet"
         description="Set this up once per sheet. It takes about five minutes and needs no Google Cloud project."
-        back={{ href: '/help', label: 'Help' }}
+        back={{ href: '/help/setup', label: 'Setup & troubleshooting' }}
       />
 
       <Banner tone="info" title="Why a script and not a sheet link" className="mb-5">
@@ -94,9 +94,9 @@ export default async function GoogleSheetsGuide() {
           <Step n={5} title="Copy the /exec URL">
             <p>
               The deployment gives you a URL ending in{' '}
-              <code className="rounded-sm bg-inset px-1 py-0.5 font-mono text-xs">/exec</code>. A URL
-              ending in <code className="font-mono text-xs">/dev</code> is the test deployment and
-              will not work — check the ending before you paste it.
+              <code className="rounded-sm bg-inset px-1 py-0.5 font-mono text-xs">/exec</code>. A
+              URL ending in <code className="font-mono text-xs">/dev</code> is the test deployment
+              and will not work — check the ending before you paste it.
             </p>
           </Step>
           <Step n={6} title="Paste both values into the tool">
@@ -105,8 +105,8 @@ export default async function GoogleSheetsGuide() {
               <strong>shared secret</strong>, and save.
             </p>
             <p>
-              Saving stores them. It does not test them — the first real capture is what confirms the
-              connection works. If it fails, the details are still saved in WA Robot and you can
+              Saving stores them. It does not test them — the first real capture is what confirms
+              the connection works. If it fails, the details are still saved in WA Robot and you can
               retry from Captures.
             </p>
             <div className="pt-1">

@@ -28,9 +28,9 @@ export default function NewBotPage() {
   return (
     <PageBody width="form">
       <PageHeader
-        title="Create AI bot"
-        description="Describe what the bot should do, then connect it to a model."
-        back={{ href: '/bots', label: 'AI bots' }}
+        title="Add AI agent"
+        description="Describe what the agent should do, then connect it to a model."
+        back={{ href: '/bots', label: 'AI agents' }}
       />
 
       {loading && !data ? (

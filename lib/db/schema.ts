@@ -68,7 +68,7 @@ export const aiModelRates = sqliteTable(
     effectiveFrom: text('effective_from').notNull(),
     createdAt: text('created_at').notNull(),
   },
-  (t) => [index('idx_ai_model_rates_lookup').on(t.kind, t.model, t.currency, t.effectiveFrom)]
+  (t) => [index('idx_ai_model_rates_lookup').on(t.kind, t.model, t.currency, t.effectiveFrom)],
 )
 
 export const aiBots = sqliteTable('ai_bots', {
@@ -113,7 +113,7 @@ export const contacts = sqliteTable(
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
-  (t) => [index('idx_contacts_wa_session').on(t.waSessionId)]
+  (t) => [index('idx_contacts_wa_session').on(t.waSessionId)],
 )
 
 export const conversations = sqliteTable(
@@ -134,6 +134,8 @@ export const conversations = sqliteTable(
      * lib/messaging/reply-scheduler.ts.
      */
     autoReplyDueAt: text('auto_reply_due_at'),
+    replyVersion: integer('reply_version').notNull().default(0),
+    aiReplyStartedAt: text('ai_reply_started_at'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
@@ -142,7 +144,7 @@ export const conversations = sqliteTable(
     index('idx_conversations_status').on(t.status, t.lastMessageAt),
     index('idx_conversations_open').on(t.contactId, t.status),
     index('idx_conversations_reply_due').on(t.autoReplyDueAt),
-  ]
+  ],
 )
 
 export const messages = sqliteTable(
@@ -193,7 +195,7 @@ export const messages = sqliteTable(
     index('idx_messages_conversation').on(t.conversationId, t.createdAt),
     index('idx_messages_contact').on(t.contactId, t.createdAt),
     uniqueIndex('idx_messages_provider_message_id').on(t.provider, t.providerMessageId),
-  ]
+  ],
 )
 
 export const systemSettings = sqliteTable('system_settings', {
@@ -204,6 +206,11 @@ export const systemSettings = sqliteTable('system_settings', {
    * running threads on AI while opening every new one on human replies.
    */
   autoReplyMode: text('auto_reply_mode').notNull().default('off'),
+  replyVersion: integer('reply_version').notNull().default(0),
+  subscriptionCostMinor: integer('subscription_cost_minor'),
+  otherMonthlyCostMinor: integer('other_monthly_cost_minor'),
+  billingAnchor: text('billing_anchor'),
+  aiCostIncluded: integer('ai_cost_included', { mode: 'boolean' }).notNull().default(false),
   defaultBotId: text('default_bot_id'),
   /**
    * How long to wait for the customer to stop typing before answering, and the
@@ -247,7 +254,7 @@ export const blastRecipients = sqliteTable(
     error: text('error'),
     sentAt: text('sent_at'),
   },
-  (t) => [index('idx_blast_recipients_campaign_status').on(t.campaignId, t.status)]
+  (t) => [index('idx_blast_recipients_campaign_status').on(t.campaignId, t.status)],
 )
 
 /**
@@ -288,10 +295,7 @@ export const botTools = sqliteTable(
     botId: text('bot_id').notNull(),
     toolId: text('tool_id').notNull(),
   },
-  (t) => [
-    primaryKey({ columns: [t.botId, t.toolId] }),
-    index('idx_bot_tools_bot').on(t.botId),
-  ]
+  (t) => [primaryKey({ columns: [t.botId, t.toolId] }), index('idx_bot_tools_bot').on(t.botId)],
 )
 
 /**
@@ -324,7 +328,7 @@ export const toolInvocations = sqliteTable(
   (t) => [
     index('idx_tool_invocations_conversation').on(t.conversationId, t.createdAt),
     index('idx_tool_invocations_status').on(t.status, t.createdAt),
-  ]
+  ],
 )
 
 /**
@@ -368,6 +372,7 @@ export const aiUsage = sqliteTable(
      * cannot tell them apart — it is always 0 for a media pass.
      */
     stage: text('stage').notNull().default('reply'),
+    usageKnown: integer('usage_known', { mode: 'boolean' }).notNull().default(false),
     status: text('status').notNull().default('ok'), // ok | failed
     error: text('error'),
     latencyMs: integer('latency_ms'),
@@ -378,5 +383,35 @@ export const aiUsage = sqliteTable(
     index('idx_ai_usage_bot').on(t.botId, t.createdAt),
     index('idx_ai_usage_conversation').on(t.conversationId, t.createdAt),
     index('idx_ai_usage_message').on(t.messageId),
-  ]
+  ],
 )
+
+/** Structured lifecycle events; never include credentials or model payloads. */
+export const conversationEvents = sqliteTable(
+  'conversation_events',
+  {
+    id: text('id').primaryKey(),
+    conversationId: text('conversation_id').notNull(),
+    contactId: text('contact_id').notNull(),
+    kind: text('kind').notNull(),
+    detail: text('detail').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_events_conversation').on(t.conversationId, t.createdAt),
+    index('idx_events_contact').on(t.contactId, t.createdAt),
+  ],
+)
+
+export const businessProfiles = sqliteTable('business_profiles', {
+  id: text('id').primaryKey(),
+  botId: text('bot_id'),
+  businessName: text('business_name').notNull(),
+  agentRole: text('agent_role').notNull().default(''),
+  openingHours: text('opening_hours').notNull(),
+  services: text('services').notNull(),
+  commonQuestions: text('common_questions').notNull(),
+  language: text('language').notNull(),
+  handoffRules: text('handoff_rules').notNull(),
+  updatedAt: text('updated_at').notNull(),
+})

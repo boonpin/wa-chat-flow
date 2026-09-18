@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { aiBots, botTools, systemSettings } from '@/lib/db/schema'
+import { aiBots, botTools, businessProfiles, systemSettings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
 import { readBotInput, setBotTools, toPublicBot } from '../serialize'
@@ -18,7 +18,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (input.isDefault) {
     db.update(aiBots).set({ isDefault: false }).run()
-    db.update(systemSettings).set({ defaultBotId: id }).where(eq(systemSettings.id, 'default')).run()
+    db.update(systemSettings)
+      .set({ defaultBotId: id })
+      .where(eq(systemSettings.id, 'default'))
+      .run()
   }
 
   // toolIds lives in bot_tools, not on the bot row — split it off before the update.
@@ -43,11 +46,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   db.delete(aiBots).where(eq(aiBots.id, id)).run()
   db.delete(botTools).where(eq(botTools.botId, id)).run()
+  db.delete(businessProfiles).where(eq(businessProfiles.botId, id)).run()
 
   // Do not leave the system pointing at a bot that no longer exists.
   const settings = db.select().from(systemSettings).where(eq(systemSettings.id, 'default')).get()
   if (settings?.defaultBotId === id) {
-    db.update(systemSettings).set({ defaultBotId: null }).where(eq(systemSettings.id, 'default')).run()
+    db.update(systemSettings)
+      .set({ defaultBotId: null })
+      .where(eq(systemSettings.id, 'default'))
+      .run()
   }
 
   return NextResponse.json({ ok: true })

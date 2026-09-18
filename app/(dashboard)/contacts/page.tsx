@@ -60,7 +60,7 @@ function ContactsWorkspace() {
 
   const load = useCallback(
     (signal: AbortSignal) => request<Contact[]>('/api/contacts', { signal }),
-    []
+    [],
   )
   const { data, loading, error, refresh, setData } = useAsyncData(load, [load])
 
@@ -144,7 +144,7 @@ function ContactsWorkspace() {
     } else {
       toast(
         `${describe(succeeded)} ${failed.length} ${plural(failed.length, 'contact')} could not be updated and ${failed.length === 1 ? 'is' : 'are'} still selected.`,
-        'error'
+        'error',
       )
     }
   }
@@ -171,7 +171,7 @@ function ContactsWorkspace() {
           options={[
             { value: 'all', label: 'Anyone' },
             { value: 'ai', label: 'AI' },
-            { value: 'human', label: 'Human' },
+            { value: 'human', label: 'Your team' },
           ]}
         />
         {channels.length > 0 && (
@@ -222,7 +222,10 @@ function ContactsWorkspace() {
             variant="secondary"
             disabled={bulkPending}
             onClick={() =>
-              applyBulk({ aiEnabled: true }, (n) => `AI replies enabled for ${n} ${plural(n, 'contact')}.`)
+              applyBulk(
+                { aiEnabled: true },
+                (n) => `AI replies enabled for ${n} ${plural(n, 'contact')}.`,
+              )
             }
           >
             Use AI replies
@@ -232,7 +235,10 @@ function ContactsWorkspace() {
             variant="secondary"
             disabled={bulkPending}
             onClick={() =>
-              applyBulk({ aiEnabled: false }, (n) => `AI replies turned off for ${n} ${plural(n, 'contact')}.`)
+              applyBulk(
+                { aiEnabled: false },
+                (n) => `AI replies turned off for ${n} ${plural(n, 'contact')}.`,
+              )
             }
           >
             Use human replies
@@ -240,13 +246,13 @@ function ContactsWorkspace() {
           {bots.length > 0 && (
             <span className="flex items-center gap-2">
               <label className="flex items-center gap-2 text-sm text-ink-muted">
-                <span className="sr-only">Bot to assign</span>
+                <span className="sr-only">Agent to assign</span>
                 <select
                   value={bulkBot}
                   onChange={(e) => setBulkBot(e.target.value)}
                   className="h-8 cursor-pointer rounded-md border border-[var(--input-border)]/70 bg-inset px-2 text-[13px] text-ink"
                 >
-                  <option value="">Choose a bot…</option>
+                  <option value="">Choose an agent…</option>
                   {/* A distinct sentinel: "use the workspace default" is a real
                       choice, not the same value as "nothing picked yet". */}
                   <option value={DEFAULT_BOT}>Workspace default</option>
@@ -264,8 +270,13 @@ function ContactsWorkspace() {
                 pendingLabel="Applying…"
                 onClick={() => {
                   const botId = bulkBot === DEFAULT_BOT ? null : bulkBot
-                  const name = botId ? bots.find((b) => b.id === botId)?.name : 'the workspace default'
-                  applyBulk({ aiBotId: botId }, (n) => `${n} ${plural(n, 'contact')} now default to ${name}.`)
+                  const name = botId
+                    ? bots.find((b) => b.id === botId)?.name
+                    : 'the workspace default'
+                  applyBulk(
+                    { aiBotId: botId },
+                    (n) => `${n} ${plural(n, 'contact')} now default to ${name}.`,
+                  )
                   setBulkBot('')
                 }}
               >
@@ -292,7 +303,7 @@ function ContactsWorkspace() {
             description="Contacts are added when you receive WhatsApp messages."
             action={
               <LinkButton href="/channels/whatsapp" variant="secondary" size="sm">
-                View WhatsApp channels
+                View WhatsApp numbers
               </LinkButton>
             }
           />
@@ -363,7 +374,9 @@ function ContactsWorkspace() {
                               saveContact(
                                 contact.id,
                                 { aiEnabled: v },
-                                v ? `The AI will answer ${who}.` : `You will answer ${who}.`
+                                v
+                                  ? `AI enabled for new conversations with ${who}.`
+                                  : `New conversations with ${who} will wait for your team.`,
                               )
                             }
                             label={`AI replies for ${who}`}
@@ -372,16 +385,16 @@ function ContactsWorkspace() {
                         </div>
 
                         <label className="mt-3 block">
-                          <span className="text-xs text-ink-soft">Default bot</span>
+                          <span className="text-xs text-ink-soft">Default agent</span>
                           <select
                             value={contact.aiBotId ?? ''}
                             disabled={pending}
-                            aria-label={`Default bot for ${who}`}
+                            aria-label={`Default agent for ${who}`}
                             onChange={(e) =>
                               saveContact(
                                 contact.id,
                                 { aiBotId: e.target.value || null },
-                                'Default bot updated for this customer.'
+                                'Default agent updated for this customer.',
                               )
                             }
                             className="mt-1 h-11 w-full cursor-pointer rounded-md border border-[var(--input-border)]/70 bg-inset px-2 text-base text-ink disabled:opacity-60"
@@ -403,136 +416,140 @@ function ContactsWorkspace() {
             </ul>
 
             <div className="hidden md:block">
-          <TableScroll>
-            <Table>
-              <thead>
-                <tr>
-                  <Th className="w-10">
-                    <Checkbox
-                      label={`Select all ${filtered.length} listed contacts`}
-                      checked={allVisibleSelected}
-                      indeterminate={visibleSelected.length > 0}
-                      onChange={(next) =>
-                        setSelected(next ? new Set(filtered.map((c) => c.id)) : new Set())
-                      }
-                    />
-                  </Th>
-                  <Th>Customer</Th>
-                  <Th>Phone</Th>
-                  {channels.length > 0 && <Th>Received on</Th>}
-                  <Th>Replies</Th>
-                  <Th>Default bot</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((contact) => {
-                  const pending = rowPending.isPending(contact.id)
-                  const isSelected = selected.has(contact.id)
-                  return (
-                    <tr key={contact.id} className={isSelected ? 'bg-selected/50' : 'hover:bg-hover'}>
-                      <Td>
+              <TableScroll>
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th className="w-10">
                         <Checkbox
-                          label={`Select ${contactLabel(contact.name, contact.phoneNumber)}`}
-                          checked={isSelected}
+                          label={`Select all ${filtered.length} listed contacts`}
+                          checked={allVisibleSelected}
+                          indeterminate={visibleSelected.length > 0}
                           onChange={(next) =>
-                            setSelected((current) => {
-                              const set = new Set(current)
-                              if (next) set.add(contact.id)
-                              else set.delete(contact.id)
-                              return set
-                            })
+                            setSelected(next ? new Set(filtered.map((c) => c.id)) : new Set())
                           }
                         />
-                      </Td>
-                      <Td>
-                        {/* A real button, so the row opens from the keyboard as
-                            well as the mouse. */}
-                        <button
-                          type="button"
-                          onClick={() => router.replace(`/contacts?contact=${contact.id}`, { scroll: false })}
-                          className="flex cursor-pointer items-center gap-3 rounded-sm text-left"
-                        >
-                          <span
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-inset text-xs font-semibold text-ink-muted"
-                            aria-hidden="true"
-                          >
-                            {initial(contact.name, contact.phoneNumber)}
-                          </span>
-                          <span className="text-sm font-medium text-ink hover:underline">
-                            {contactLabel(contact.name, contact.phoneNumber)}
-                          </span>
-                        </button>
-                      </Td>
-                      <Td className="whitespace-nowrap text-ink-muted tabular-nums">
-                        {contact.phoneNumber}
-                      </Td>
-                      {channels.length > 0 && (
-                        <Td>
-                          {contact.waSessionName ? (
-                            <ChannelTag name={contact.waSessionName} />
-                          ) : (
-                            <span className="text-ink-soft">—</span>
-                          )}
-                        </Td>
-                      )}
-                      <Td>
-                        <span className="flex items-center gap-2.5">
-                          <Switch
-                            size="sm"
-                            checked={contact.aiEnabled}
-                            pending={pending}
-                            onChange={(v) =>
-                              saveContact(
-                                contact.id,
-                                { aiEnabled: v },
-                                v
-                                  ? `The AI will answer ${contactLabel(contact.name, contact.phoneNumber)}.`
-                                  : `You will answer ${contactLabel(contact.name, contact.phoneNumber)}.`
-                              )
-                            }
-                            label={`AI replies for ${contactLabel(contact.name, contact.phoneNumber)}`}
-                          />
-                          <ModeBadge mode={contact.aiEnabled ? 'auto' : 'human'} />
-                        </span>
-                      </Td>
-                      <Td>
-                        <select
-                          value={contact.aiBotId ?? ''}
-                          disabled={pending}
-                          aria-label={`Default bot for ${contactLabel(contact.name, contact.phoneNumber)}`}
-                          onChange={(e) =>
-                            saveContact(
-                              contact.id,
-                              { aiBotId: e.target.value || null },
-                              'Default bot updated for this customer.'
-                            )
-                          }
-                          className="h-9 max-w-[12rem] cursor-pointer rounded-md border border-[var(--input-border)]/70 bg-inset px-2 text-sm text-ink disabled:opacity-60"
-                        >
-                          <option value="">Workspace default</option>
-                          {bots.map((bot) => (
-                            <option key={bot.id} value={bot.id} disabled={!bot.enabled}>
-                              {bot.name}
-                              {bot.enabled ? '' : ' (off)'}
-                            </option>
-                          ))}
-                        </select>
-                      </Td>
+                      </Th>
+                      <Th>Customer</Th>
+                      <Th>Phone</Th>
+                      {channels.length > 0 && <Th>Received on</Th>}
+                      <Th>Replies</Th>
+                      <Th>Default agent</Th>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </Table>
-          </TableScroll>
+                  </thead>
+                  <tbody>
+                    {filtered.map((contact) => {
+                      const pending = rowPending.isPending(contact.id)
+                      const isSelected = selected.has(contact.id)
+                      return (
+                        <tr
+                          key={contact.id}
+                          className={isSelected ? 'bg-selected/50' : 'hover:bg-hover'}
+                        >
+                          <Td>
+                            <Checkbox
+                              label={`Select ${contactLabel(contact.name, contact.phoneNumber)}`}
+                              checked={isSelected}
+                              onChange={(next) =>
+                                setSelected((current) => {
+                                  const set = new Set(current)
+                                  if (next) set.add(contact.id)
+                                  else set.delete(contact.id)
+                                  return set
+                                })
+                              }
+                            />
+                          </Td>
+                          <Td>
+                            {/* A real button, so the row opens from the keyboard as
+                            well as the mouse. */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                router.replace(`/contacts?contact=${contact.id}`, { scroll: false })
+                              }
+                              className="flex cursor-pointer items-center gap-3 rounded-sm text-left"
+                            >
+                              <span
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-inset text-xs font-semibold text-ink-muted"
+                                aria-hidden="true"
+                              >
+                                {initial(contact.name, contact.phoneNumber)}
+                              </span>
+                              <span className="text-sm font-medium text-ink hover:underline">
+                                {contactLabel(contact.name, contact.phoneNumber)}
+                              </span>
+                            </button>
+                          </Td>
+                          <Td className="whitespace-nowrap text-ink-muted tabular-nums">
+                            {contact.phoneNumber}
+                          </Td>
+                          {channels.length > 0 && (
+                            <Td>
+                              {contact.waSessionName ? (
+                                <ChannelTag name={contact.waSessionName} />
+                              ) : (
+                                <span className="text-ink-soft">—</span>
+                              )}
+                            </Td>
+                          )}
+                          <Td>
+                            <span className="flex items-center gap-2.5">
+                              <Switch
+                                size="sm"
+                                checked={contact.aiEnabled}
+                                pending={pending}
+                                onChange={(v) =>
+                                  saveContact(
+                                    contact.id,
+                                    { aiEnabled: v },
+                                    v
+                                      ? `AI enabled for new conversations with ${contactLabel(contact.name, contact.phoneNumber)}.`
+                                      : `New conversations with ${contactLabel(contact.name, contact.phoneNumber)} will wait for your team.`,
+                                  )
+                                }
+                                label={`AI replies for ${contactLabel(contact.name, contact.phoneNumber)}`}
+                              />
+                              <ModeBadge mode={contact.aiEnabled ? 'auto' : 'human'} />
+                            </span>
+                          </Td>
+                          <Td>
+                            <select
+                              value={contact.aiBotId ?? ''}
+                              disabled={pending}
+                              aria-label={`Default agent for ${contactLabel(contact.name, contact.phoneNumber)}`}
+                              onChange={(e) =>
+                                saveContact(
+                                  contact.id,
+                                  { aiBotId: e.target.value || null },
+                                  'Default agent updated for this customer.',
+                                )
+                              }
+                              className="h-9 max-w-[12rem] cursor-pointer rounded-md border border-[var(--input-border)]/70 bg-inset px-2 text-sm text-ink disabled:opacity-60"
+                            >
+                              <option value="">Workspace default</option>
+                              {bots.map((bot) => (
+                                <option key={bot.id} value={bot.id} disabled={!bot.enabled}>
+                                  {bot.name}
+                                  {bot.enabled ? '' : ' (off)'}
+                                </option>
+                              ))}
+                            </select>
+                          </Td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </Table>
+              </TableScroll>
             </div>
           </>
         )}
       </Panel>
 
       <p className="mt-4 max-w-[65ch] text-xs leading-4 text-ink-soft">
-        Turning AI replies on or off here also applies to the customer’s open conversation. Choosing
-        a default bot applies to their future conversations — a bot already chosen for an open
-        conversation keeps answering it.
+        Reply preferences here apply to new conversations. Take over an open conversation in Inbox;
+        its reply responsibility remains separate.
       </p>
 
       {openContact && (
@@ -549,7 +566,13 @@ function ContactsWorkspace() {
 
 export default function ContactsPage() {
   return (
-    <Suspense fallback={<PageBody width="wide"><Skeleton className="h-96 w-full" /></PageBody>}>
+    <Suspense
+      fallback={
+        <PageBody width="wide">
+          <Skeleton className="h-96 w-full" />
+        </PageBody>
+      }
+    >
       <ContactsWorkspace />
     </Suspense>
   )

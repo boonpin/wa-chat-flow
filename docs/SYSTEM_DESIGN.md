@@ -52,8 +52,8 @@ duplicate, which also covers two concurrent deliveries of the same event.
 
 ## 3. Core Features & Functionality
 
-### 3.1 AI Bot Orchestration
-- **Dynamic Personalities:** Define multiple bots with unique system prompts, instructions, and target AI providers.
+### 3.1 AI agent configuration (AI bots)
+- **Multiple configurable agents:** Maintain sales, support, wholesale or other customer-group agents, each with its own instructions, provider binding and allowed tools. AI agents are the existing AI bots, not a single global robot. Settings exposes management as a business task; `/bots` and its original add/edit APIs remain.
 - **Unified Provider Interface:** Seamlessly switch between OpenAI and Gemini without changing business logic.
 - **Parameter Control:** Customize AI behavior per bot (Enabled/Disabled status, specific API keys).
 
@@ -65,7 +65,7 @@ Each incoming message runs through:
 2. **Reply Window:** The message opens or extends a debounce window on its thread rather than triggering a reply of its own (see 3.3).
 3. **System Filter:** Global auto-reply master switch.
 4. **Conversation Mode:** `auto` lets the AI answer; `human` leaves the thread to an operator.
-5. **Bot Selection:** Conversation bot → contact bot → system default → the bot flagged default. Disabled bots are skipped.
+5. **Bot Selection:** Conversation assistant (snapshotted from the contact preference on creation) → system default → the assistant flagged default. Disabled assistants are skipped; later contact changes affect future threads.
 6. **Context:** The bot prompt plus the last ~20 text messages of that conversation.
 7. **Tools:** Whatever the selected bot has been assigned, capped at 3 call rounds per reply.
 
@@ -113,11 +113,59 @@ itself, behind a `CaptureSink` interface. Every capture is written to
 sync and not the lead; failed rows are retryable from the dashboard.
 
 ### 3.4 Human Inbox
-Conversations are the operational unit. The Inbox lists them by Open / Resolved
-with search, and each thread exposes the `AI Auto Reply` toggle, bot selection,
-a Resolve action and a manual reply box. Manual replies are stored with
-`sender_type = human`, AI replies with `sender_type = ai`, so the transcript
-shows exactly who said what.
+Conversations are the operational unit. Inbox is the default start page, with
+Needs attention / All open / Done views, server-filtered pagination and totals
+computed over all matching records. Shared attention derivation checks unanswered
+customer messages, failed sends, paused replies and channel/assistant blockers.
+Decorative messages do not become outstanding enquiries. Dashboard uses the same
+attention service and the impact report service for business value.
+
+**Take over** changes only the current conversation. A manual send atomically
+claims it for the team before attempting delivery, and a failed send retains team
+ownership. Contact settings separately control future conversations. Updates use
+`reply_version` to reject stale operator changes. AI generation rechecks conversation,
+global policy and assistant configuration before further model/tool calls and before
+initiating the send. A send or external action already in progress cannot be recalled;
+the takeover response exposes that send state. **Let AI reply** schedules one response
+to eligible outstanding customer input if global policy allows it.
+
+Lifecycle (Open / Done) remains separate from ownership (AI / Your team).
+`conversation_events` records ownership changes, lifecycle changes and AI processing
+or suppression for the contact-based Activity timeline. Existing messages, captures
+and usage form the other timeline entries; capture retry events reference the original
+invocation rather than duplicating the enquiry.
+
+### 3.8 Business setup and value
+Settings exposes **AI agents** as ordinary business configuration and keeps technical
+connections separate. Shared content navigation and a Settings/current-section breadcrumb
+appear above module page headings, including existing agent and WhatsApp routes.
+Settings opens AI agents without an Overview tab. Technical settings opens AI connections
+and adds content side navigation for connections, Google Sheets, Activity and Workspace
+preferences. Technical Google Sheets routes reuse the collection editor and retain context
+on save/cancel. Help has Using the app and Setup & troubleshooting sections; access/setup
+reference is `/help/access`, with a redirect from `/settings/access`. Section links wrap on
+phones and preserve active state on nested routes; daily-work pages omit them.
+Guided profiles belong to individual agents, selected by `botId`,
+with their own role/customer group and business facts. The original custom editor remains
+available. Saving one profile preserves other agents, tools, provider, enabled state and
+workspace default; converting an existing custom prompt requires explicit confirmation.
+Legacy singleton guided data remains bound to its original agent. Contacts assigns agents
+for future enquiries; Inbox can independently switch the current conversation’s agent.
+That switch invalidates obsolete generation and schedules eligible pending input when AI
+is allowed. Groups are assigned by the team; role text does not perform classification. Preview calls the AI provider
+once without tools, WhatsApp transport or customer records. Preview usage is recorded
+as cost and never counted as a customer reply. Human-help instructions are prompt
+content, not a structured automatic handoff or staff notification mechanism.
+
+Time & costs uses recorded sent AI service replies multiplied by confirmed manual
+reply time and hourly staff cost. Subscription and other monthly charges are prorated
+over actual UTC monthly billing cycles, clamping month-end anchors. AI usage is added
+only when separately charged. Missing usage/prices stay unknown; negative value stays
+visible. Current assumptions recalculate historical estimates, explicitly disclosed.
+`ai_usage.usage_known` distinguishes recorded zero-token usage from missing usage.
+Model breakdown attributes a reply's staff-time value only to its final successful
+reply call, so preprocessing models cannot duplicate that value. These figures are
+estimates of avoided work, not confirmed payroll savings or resolved enquiries.
 
 ### 3.5 Delivery Status
 Outbound messages are written before the send with status `processing`, then

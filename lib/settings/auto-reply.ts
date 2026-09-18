@@ -39,21 +39,21 @@ export const AUTO_REPLY_MODE_COPY: Record<
   { label: string; short: string; detail: string; tone: 'success' | 'warning' | 'neutral' }
 > = {
   all: {
-    label: 'Fully automatic',
+    label: 'Allow AI replies',
     short: 'fully automatic',
     detail:
       'New conversations start on AI replies when the customer allows it, and conversations already on AI keep being answered.',
     tone: 'success',
   },
   existing: {
-    label: 'Existing conversations only',
+    label: 'Continue current AI conversations',
     short: 'existing conversations only',
     detail:
       'Conversations already on AI replies keep being answered. Anything that opens from now on starts on human replies, so nobody new is answered automatically.',
     tone: 'warning',
   },
   off: {
-    label: 'Off',
+    label: 'Pause all AI replies',
     short: 'off',
     detail:
       'No conversation is answered automatically, even one set to AI replies. Messages still arrive and you can still reply by hand.',

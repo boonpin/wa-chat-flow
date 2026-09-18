@@ -1,14 +1,21 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback } from 'react'
+import { BusinessValue } from '@/components/business-value'
+import type { ImpactReport } from '@/lib/reports/impact-types'
+import { useCallback, useState } from 'react'
 import {
   Badge,
+  Button,
+  ConfirmDialog,
+  errorMessage,
+  useToast,
   Banner,
   ChannelStatusBadge,
   ChannelTag,
   CheckIcon,
   ChevronRight,
+  Disclosure,
   EmptyState,
   ErrorState,
   InboxIcon,
@@ -94,16 +101,55 @@ function ChecklistItem({
 }
 
 export default function OverviewPage() {
-  const { status, loading: statusLoading, error: statusError, stale: statusStale, refresh } =
-    useWorkspaceStatus()
+  const {
+    status,
+    loading: statusLoading,
+    error: statusError,
+    stale: statusStale,
+    refresh,
+  } = useWorkspaceStatus()
 
   const loadConversations = useCallback(
     (signal: AbortSignal) =>
       request<ConversationRow[]>('/api/conversations?status=open&limit=6', { signal }),
-    []
+    [],
   )
   const conversations = useAsyncData(loadConversations, [loadConversations], { pollMs: 30_000 })
 
+  const loadValue = useCallback(
+    (signal: AbortSignal) => request<ImpactReport>('/api/reports/impact?range=30', { signal }),
+    [],
+  )
+  const value = useAsyncData(loadValue, [loadValue], { pollMs: 30_000 })
+  const loadQueue = useCallback(
+    (signal: AbortSignal) =>
+      request<{ counts: { attention: number } }>('/api/conversations?view=queue&limit=1', {
+        signal,
+      }),
+    [],
+  )
+  const queue = useAsyncData(loadQueue, [loadQueue], { pollMs: 30_000 })
+  const [pauseOpen, setPauseOpen] = useState(false)
+  const [pausing, setPausing] = useState(false)
+  const { toast } = useToast()
+  async function pauseAll() {
+    setPausing(true)
+    try {
+      await request('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoReplyMode: 'off' }),
+      })
+      refresh()
+      queue.refresh()
+      setPauseOpen(false)
+      toast('AI replies paused for everyone. Your team can still reply in Inbox.')
+    } catch (error) {
+      toast(errorMessage(error, 'Could not pause AI replies.'), 'error')
+    } finally {
+      setPausing(false)
+    }
+  }
   const fallback = resolveFallbackBot(status)
   const channels = status?.channels ?? []
   const connected = countConnected(channels)
@@ -146,24 +192,24 @@ export default function OverviewPage() {
 
     if (bots.length === 0) {
       issues.push({
-        title: 'No AI bot yet',
-        detail: 'A bot holds the instructions the AI answers with.',
+        title: 'No AI assistant yet',
+        detail: 'A assistant holds the instructions the AI answers with.',
         href: '/bots/new',
-        cta: 'Create bot',
+        cta: 'Add assistant',
         tone: 'warning',
       })
     } else if (!fallback.bot) {
       issues.push({
-        title: 'No default bot',
+        title: 'No default assistant',
         detail:
-          'Conversations without their own bot will not get an AI reply until a default is chosen.',
+          'Conversations without their own assistant will not get an AI reply until a default is chosen.',
         href: '/automation/replies',
         cta: 'Choose default',
         tone: 'warning',
       })
     } else if (fallback.conflict) {
       issues.push({
-        title: 'Two bots are marked as the default',
+        title: 'Two assistants are marked as the default',
         detail: `Reply settings select “${fallback.bot.name}”, while “${fallback.conflict.name}” still carries the older default flag. “${fallback.bot.name}” is the one that answers.`,
         href: '/automation/replies',
         cta: 'Review',
@@ -196,16 +242,35 @@ export default function OverviewPage() {
   return (
     <PageBody width="content">
       <PageHeader
-        title="Overview"
+        title="Dashboard"
         description="What needs your attention, and what the AI will do next."
         actions={
-          <LinkButton href="/inbox" variant="primary" size="md">
-            <InboxIcon size={15} />
-            Open Inbox
-          </LinkButton>
+          <div className="flex flex-wrap gap-2">
+            {status && autoReplyMode !== 'off' && (
+              <Button variant="secondary" onClick={() => setPauseOpen(true)}>
+                Pause all AI replies
+              </Button>
+            )}
+            <LinkButton href="/inbox" variant="primary" size="md">
+              <InboxIcon size={15} />
+              Open Inbox
+            </LinkButton>
+          </div>
         }
       />
 
+      <ConfirmDialog
+        open={pauseOpen}
+        onClose={() => {
+          if (!pausing) setPauseOpen(false)
+        }}
+        onConfirm={pauseAll}
+        pending={pausing}
+        title="Pause AI replies for everyone?"
+        description="Customers can still send messages. Your team will need to answer them in Inbox. A message already sending may still arrive. Resume from Automatic replies when ready."
+        confirmLabel="Pause all AI replies"
+        pendingLabel="Pausing…"
+      />
       {statusStale && <StaleNotice at={null} onRetry={refresh} />}
 
       {statusError && !status && (
@@ -227,6 +292,70 @@ export default function OverviewPage() {
 
       {status && (
         <div className="space-y-6">
+          {/* ── Known issues lead. Never a blanket "all systems operational". ── */}
+          {issues.length > 0 && (
+            <Panel>
+              <PanelHeader
+                title={`${issues.length} ${issues.length === 1 ? 'thing needs' : 'things need'} attention`}
+                description="Each one names the number, assistant or setting it is about."
+              />
+              <ul>
+                {issues.map((issue, i) => (
+                  <li key={i}>
+                    <Link
+                      href={issue.href}
+                      className="group flex items-start gap-3 border-b border-line-soft px-4 py-3.5 transition-colors last:border-0 hover:bg-hover md:px-5"
+                    >
+                      <span
+                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                          issue.tone === 'danger' ? 'bg-danger' : 'bg-warning'
+                        }`}
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-ink">{issue.title}</span>
+                        <span className="mt-0.5 block text-sm leading-5 text-ink-muted">
+                          {issue.detail}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-action">
+                        {issue.cta}
+                        <ChevronRight size={14} />
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          )}
+
+          {issues.length === 0 && setupComplete && (
+            <Banner tone="success" title="No known issues">
+              Your WhatsApp numbers last reported connected. AI replies are enabled.
+            </Banner>
+          )}
+
+          {queue.error && (
+            <ErrorState
+              title="Could not check conversations needing attention"
+              onRetry={queue.refresh}
+            />
+          )}
+          {queue.stale && <StaleNotice at={queue.loadedAt} onRetry={queue.refresh} />}
+          {queue.data && (
+            <Banner
+              tone={queue.data.counts.attention ? 'warning' : 'info'}
+              title={
+                queue.data.counts.attention
+                  ? `${queue.data.counts.attention} conversations need your team`
+                  : 'No conversations need your team right now'
+              }
+            >
+              <Link href="/inbox" className="font-semibold text-action underline">
+                Open inbox
+              </Link>
+            </Banner>
+          )}
           {/* ── Setup checklist, only while something is genuinely missing ── */}
           {!setupComplete && (
             <Panel>
@@ -237,10 +366,10 @@ export default function OverviewPage() {
               <ol className="list-none">
                 <ChecklistItem
                   done={bots.length > 0}
-                  title="Create an AI bot"
+                  title="Set up your AI assistant"
                   detail="Write the instructions the AI answers with."
-                  href={bots.length > 0 ? '/bots' : '/bots/new'}
-                  cta="Create bot"
+                  href="/settings/business"
+                  cta="Add assistant"
                 />
                 <ChecklistItem
                   done={connected > 0}
@@ -280,56 +409,19 @@ export default function OverviewPage() {
             </Panel>
           )}
 
-          {/* ── Known issues lead. Never a blanket "all systems operational". ── */}
-          {issues.length > 0 && (
-            <Panel>
-              <PanelHeader
-                title={`${issues.length} ${issues.length === 1 ? 'thing needs' : 'things need'} attention`}
-                description="Each one names the number, bot or setting it is about."
-              />
-              <ul>
-                {issues.map((issue, i) => (
-                  <li key={i}>
-                    <Link
-                      href={issue.href}
-                      className="group flex items-start gap-3 border-b border-line-soft px-4 py-3.5 transition-colors last:border-0 hover:bg-hover md:px-5"
-                    >
-                      <span
-                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                          issue.tone === 'danger' ? 'bg-danger' : 'bg-warning'
-                        }`}
-                        aria-hidden="true"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-ink">{issue.title}</span>
-                        <span className="mt-0.5 block text-sm leading-5 text-ink-muted">
-                          {issue.detail}
-                        </span>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-action">
-                        {issue.cta}
-                        <ChevronRight size={14} />
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </Panel>
+          {value.stale && <StaleNotice at={value.loadedAt} onRetry={value.refresh} />}
+          {value.loading && !value.data ? (
+            <Skeleton className="h-56 w-full" />
+          ) : value.error ? (
+            <ErrorState title="Could not load time and costs" onRetry={value.refresh} />
+          ) : (
+            value.data && <BusinessValue report={value.data} />
           )}
-
-          {issues.length === 0 && setupComplete && (
-            <Banner tone="success" title="No known issues">
-              Every connected number reported a working connection when it was last checked, and AI
-              replies are enabled. This reflects the last status the gateway reported — it is not a
-              live guarantee.
-            </Banner>
-          )}
-
           {/* ── Today's work ── */}
           <Panel>
             <PanelHeader
-              title="Open conversations"
-              description="The most recent conversations still waiting to be resolved."
+              title="Recent open conversations"
+              description="The most recent conversations still open."
               action={
                 <LinkButton href="/inbox" size="sm" variant="ghost">
                   View all
@@ -402,62 +494,69 @@ export default function OverviewPage() {
           </Panel>
 
           {/* ── Configuration summary, last: supporting, not leading ── */}
-          <Panel>
-            <PanelHeader title="How replies are set up" />
-            <div className="grid gap-4 p-4 sm:grid-cols-2 md:p-5">
-              <div>
-                <p className="text-xs text-ink-soft">AI replies</p>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <Badge variant={replyPolicy.tone} dot>
-                    {replyPolicy.label}
-                  </Badge>
-                  <Link href="/automation/replies" className="text-[13px] font-medium text-action hover:underline">
-                    Change
-                  </Link>
+          <Disclosure summary="How replies are set up">
+            <Panel>
+              <div className="grid gap-4 p-4 sm:grid-cols-2 md:p-5">
+                <div>
+                  <p className="text-xs text-ink-soft">AI replies</p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Badge variant={replyPolicy.tone} dot>
+                      {replyPolicy.label}
+                    </Badge>
+                    <Link
+                      href="/automation/replies"
+                      className="text-[13px] font-medium text-action hover:underline"
+                    >
+                      Change
+                    </Link>
+                  </div>
+                  <p className="mt-1.5 text-xs leading-4 text-ink-soft">
+                    {replyPolicy.detail} Manual replies and campaigns are unaffected.
+                  </p>
                 </div>
-                <p className="mt-1.5 text-xs leading-4 text-ink-soft">
-                  {replyPolicy.detail} Manual replies and campaigns are unaffected.
-                </p>
-              </div>
 
-              <div>
-                <p className="text-xs text-ink-soft">Default bot</p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-ink">
-                    {fallback.bot?.name ?? 'None selected'}
-                  </span>
-                  <Link href="/bots" className="text-[13px] font-medium text-action hover:underline">
-                    Manage bots
-                  </Link>
+                <div>
+                  <p className="text-xs text-ink-soft">Default agent</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-ink">
+                      {fallback.bot?.name ?? 'None selected'}
+                    </span>
+                    <Link
+                      href="/bots"
+                      className="text-[13px] font-medium text-action hover:underline"
+                    >
+                      Manage AI agents
+                    </Link>
+                  </div>
+                  <p className="mt-1.5 text-xs leading-4 text-ink-soft">
+                    {fallback.bot
+                      ? fallback.source === 'flag'
+                        ? 'Used when no assistant is selected for the customer or conversation.'
+                        : 'Used when a conversation or contact has no assistant of its own.'
+                      : 'Conversations without their own assistant will not receive an AI reply.'}
+                  </p>
                 </div>
-                <p className="mt-1.5 text-xs leading-4 text-ink-soft">
-                  {fallback.bot
-                    ? fallback.source === 'flag'
-                      ? 'Selected by the bot’s own default flag rather than reply settings.'
-                      : 'Used when a conversation or contact has no bot of its own.'
-                    : 'Conversations without their own bot will not receive an AI reply.'}
-                </p>
-              </div>
 
-              <div className="sm:col-span-2">
-                <p className="text-xs text-ink-soft">
-                  WhatsApp numbers ({connected} of {channels.length} reported connected)
-                </p>
-                {channels.length === 0 ? (
-                  <p className="mt-1.5 text-sm text-ink-muted">None added yet.</p>
-                ) : (
-                  <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-                    {channels.map((channel) => (
-                      <li key={channel.id} className="flex items-center gap-2">
-                        <ChannelTag name={channel.sessionName} />
-                        <ChannelStatusBadge status={channel.status} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-ink-soft">
+                    WhatsApp numbers ({connected} of {channels.length} reported connected)
+                  </p>
+                  {channels.length === 0 ? (
+                    <p className="mt-1.5 text-sm text-ink-muted">None added yet.</p>
+                  ) : (
+                    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                      {channels.map((channel) => (
+                        <li key={channel.id} className="flex items-center gap-2">
+                          <ChannelTag name={channel.sessionName} />
+                          <ChannelStatusBadge status={channel.status} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            </div>
-          </Panel>
+            </Panel>
+          </Disclosure>
         </div>
       )}
     </PageBody>

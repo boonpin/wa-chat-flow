@@ -25,7 +25,11 @@ The same command resets the password of an existing account.
 2. Enter email and password.
 3. Click **Sign In**.
 
-After successful login, you will be redirected to `/dashboard`.
+After successful login, Inbox opens by default. To start on Dashboard instead, choose
+Settings → Technical settings → Workspace preferences → Start page. This choice is
+saved in the current browser.
+
+For administrator guidance, open Help → Setup & troubleshooting → Access and setup support.
 
 ## Session Behavior
 

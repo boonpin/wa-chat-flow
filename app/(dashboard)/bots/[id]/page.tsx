@@ -18,17 +18,14 @@ import { BotForm, type BotRecord, type ProviderChoice, type ToolChoice } from '.
 export default function EditBotPage() {
   const { id } = useParams<{ id: string }>()
 
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      const [bots, tools, providers] = await Promise.all([
-        request<BotRecord[]>('/api/bots', { signal }),
-        request<ToolChoice[]>('/api/tools', { signal }),
-        request<ProviderChoice[]>('/api/ai-providers', { signal }),
-      ])
-      return { bots, tools, providers }
-    },
-    []
-  )
+  const load = useCallback(async (signal: AbortSignal) => {
+    const [bots, tools, providers] = await Promise.all([
+      request<BotRecord[]>('/api/bots', { signal }),
+      request<ToolChoice[]>('/api/tools', { signal }),
+      request<ProviderChoice[]>('/api/ai-providers', { signal }),
+    ])
+    return { bots, tools, providers }
+  }, [])
   const { data, loading, error, refresh } = useAsyncData(load, [load])
 
   const bot = data?.bots.find((b) => b.id === id) ?? null
@@ -37,9 +34,16 @@ export default function EditBotPage() {
   return (
     <PageBody width="form">
       <PageHeader
-        title={bot?.name ?? 'Edit bot'}
+        title={bot?.name ?? 'Edit agent'}
         description={bot ? 'Changes take effect for new replies as soon as you save.' : undefined}
-        back={{ href: '/bots', label: 'AI bots' }}
+        actions={
+          bot && bot.handlerType === 'direct' ? (
+            <LinkButton href={`/settings/business?botId=${bot.id}`} variant="secondary">
+              Guided agent details & preview
+            </LinkButton>
+          ) : undefined
+        }
+        back={{ href: '/bots', label: 'AI agents' }}
       />
 
       {loading && !data ? (
@@ -49,17 +53,17 @@ export default function EditBotPage() {
         </div>
       ) : error ? (
         <Panel>
-          <ErrorState title="Could not open this bot" detail={error} onRetry={refresh} />
+          <ErrorState title="Could not open this agent" detail={error} onRetry={refresh} />
         </Panel>
       ) : !bot ? (
         // A deep link to a deleted record gets its own state, not an empty form.
         <Panel>
           <EmptyState
-            title="This bot no longer exists"
+            title="This agent no longer exists"
             description="It may have been deleted from another session."
             action={
               <LinkButton href="/bots" variant="secondary" size="sm">
-                Back to AI bots
+                Back to AI agents
               </LinkButton>
             }
           />

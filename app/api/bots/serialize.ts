@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
-import { aiProviders, botTools, type aiBots } from '@/lib/db/schema'
+import { aiProviders, botTools, businessProfiles, type aiBots } from '@/lib/db/schema'
+import { businessInstructions } from '@/lib/settings/business'
 import { eq } from 'drizzle-orm'
 
 type Bot = typeof aiBots.$inferSelect
@@ -16,8 +17,12 @@ export function toPublicBot(bot: Bot) {
     ? db.select().from(aiProviders).where(eq(aiProviders.id, bot.providerId)).get()
     : undefined
 
+  const guided = db.select().from(businessProfiles).where(eq(businessProfiles.botId, bot.id)).get()
+
   return {
     ...bot,
+    guidedSetup: !!guided && bot.prompt === businessInstructions(guided),
+    agentRole: guided?.agentRole ?? null,
     /** Null when the provider row was deleted out from under the bot. */
     providerName: provider?.name ?? null,
     provider: provider?.kind ?? null,

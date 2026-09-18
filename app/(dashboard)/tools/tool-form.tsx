@@ -82,10 +82,34 @@ const TEMPLATES: {
     description:
       'Capture a sales enquiry. Call this once you have collected the customer’s name, contact details and which product they are interested in. Do not call it for support questions.',
     fields: [
-      { name: 'full_name', label: 'Name', type: 'string', required: true, description: 'The customer’s full name' },
-      { name: 'contact_number', label: 'Contact', type: 'string', required: true, description: 'Phone number to reach them on' },
-      { name: 'email', label: 'Email', type: 'string', required: false, description: 'Email address, if they give one' },
-      { name: 'product', label: 'Interested product', type: 'string', required: true, description: 'The product or plan they asked about' },
+      {
+        name: 'full_name',
+        label: 'Name',
+        type: 'string',
+        required: true,
+        description: 'The customer’s full name',
+      },
+      {
+        name: 'contact_number',
+        label: 'Contact',
+        type: 'string',
+        required: true,
+        description: 'Phone number to reach them on',
+      },
+      {
+        name: 'email',
+        label: 'Email',
+        type: 'string',
+        required: false,
+        description: 'Email address, if they give one',
+      },
+      {
+        name: 'product',
+        label: 'Interested product',
+        type: 'string',
+        required: true,
+        description: 'The product or plan they asked about',
+      },
     ],
   },
   {
@@ -96,11 +120,42 @@ const TEMPLATES: {
     description:
       'Capture a support request. Call this once you understand what is wrong and have the customer’s name and contact details. Do not call it for sales or pricing enquiries.',
     fields: [
-      { name: 'full_name', label: 'Name', type: 'string', required: true, description: 'The customer’s full name' },
-      { name: 'contact_number', label: 'Contact', type: 'string', required: true, description: 'Phone number to reach them on' },
-      { name: 'email', label: 'Email', type: 'string', required: false, description: 'Email address, if they give one' },
-      { name: 'issue', label: 'Issue', type: 'string', required: true, description: 'What the problem is, in the customer’s own words' },
-      { name: 'urgency', label: 'Urgency', type: 'enum', required: false, description: 'How urgent it is', options: ['low', 'medium', 'high'] },
+      {
+        name: 'full_name',
+        label: 'Name',
+        type: 'string',
+        required: true,
+        description: 'The customer’s full name',
+      },
+      {
+        name: 'contact_number',
+        label: 'Contact',
+        type: 'string',
+        required: true,
+        description: 'Phone number to reach them on',
+      },
+      {
+        name: 'email',
+        label: 'Email',
+        type: 'string',
+        required: false,
+        description: 'Email address, if they give one',
+      },
+      {
+        name: 'issue',
+        label: 'Issue',
+        type: 'string',
+        required: true,
+        description: 'What the problem is, in the customer’s own words',
+      },
+      {
+        name: 'urgency',
+        label: 'Urgency',
+        type: 'enum',
+        required: false,
+        description: 'How urgent it is',
+        options: ['low', 'medium', 'high'],
+      },
     ],
   },
 ]
@@ -137,21 +192,23 @@ export function ToolForm({
   tool,
   bots,
   onBotsChanged,
+  returnHref = '/tools',
 }: {
   tool: ToolRecord | null
   bots: BotChoice[]
   onBotsChanged?: () => void
+  returnHref?: string
 }) {
   const router = useRouter()
   const { toast } = useToast()
   const isNew = tool === null
 
   const [form, setForm] = useState<FormState>(() => initialForm(tool))
-  const [fields, setFields] = useState<EditableField[]>(
-    () => (tool?.fields ?? []).map((f) => ({ ...f, keyLocked: true }))
+  const [fields, setFields] = useState<EditableField[]>(() =>
+    (tool?.fields ?? []).map((f) => ({ ...f, keyLocked: true })),
   )
   const [attached, setAttached] = useState<string[]>(() =>
-    bots.filter((b) => tool && b.toolIds.includes(tool.id)).map((b) => b.id)
+    bots.filter((b) => tool && b.toolIds.includes(tool.id)).map((b) => b.id),
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -166,7 +223,7 @@ export function ToolForm({
       fields: (tool?.fields ?? []).map((f) => ({ ...f, keyLocked: true })),
       attached: bots.filter((b) => tool && b.toolIds.includes(tool.id)).map((b) => b.id),
     }),
-    [tool, bots]
+    [tool, bots],
   )
   const dirty =
     JSON.stringify({ form, fields, attached: [...attached].sort() }) !==
@@ -201,7 +258,7 @@ export function ToolForm({
         // A new field's key follows its label until the key is edited by hand.
         if (patch.label !== undefined && !f.keyLocked) next.name = toMachineKey(patch.label)
         return next
-      })
+      }),
     )
   }
 
@@ -220,7 +277,7 @@ export function ToolForm({
     try {
       latest = await request<BotChoice[]>('/api/bots')
     } catch {
-      return 'The tool was saved, but its bots could not be checked. Open the bot to attach it.'
+      return 'The tool was saved, but its agents could not be checked. Open the agent to attach it.'
     }
 
     const failures: string[] = []
@@ -256,13 +313,19 @@ export function ToolForm({
 
     if (!form.name.trim()) return setSaveError('The tool needs a name the AI can call.')
     if (!form.description.trim())
-      return setSaveError('Describe when the AI should use this tool — it is what decides sales from support.')
-    if (fields.length === 0) return setSaveError('Add at least one field. A tool with no fields cannot run.')
+      return setSaveError(
+        'Describe when the AI should use this tool — it is what decides sales from support.',
+      )
+    if (fields.length === 0)
+      return setSaveError('Add at least one field. A tool with no fields cannot run.')
     const badField = fields.find((f) => !f.name || !/^[a-z][a-z0-9_]{0,62}$/.test(f.name))
     if (badField)
-      return setSaveError(`“${badField.label || 'A field'}” needs a valid key: lowercase letters, digits and underscores.`)
+      return setSaveError(
+        `“${badField.label || 'A field'}” needs a valid key: lowercase letters, digits and underscores.`,
+      )
     const badEnum = fields.find((f) => f.type === 'enum' && (f.options ?? []).length === 0)
-    if (badEnum) return setSaveError(`“${badEnum.label}” is a choice field, so it needs allowed values.`)
+    if (badEnum)
+      return setSaveError(`“${badEnum.label}” is a choice field, so it needs allowed values.`)
 
     setSaving(true)
     try {
@@ -296,7 +359,7 @@ export function ToolForm({
       }
 
       toast(isNew ? `“${payload.name}” created.` : 'Tool saved.')
-      router.push('/tools')
+      router.push(returnHref)
       router.refresh()
     } catch (err) {
       setSaveError(errorMessage(err, 'Changes were not saved. Your edits are still here.'))
@@ -309,7 +372,7 @@ export function ToolForm({
     try {
       await request(`/api/tools/${tool!.id}`, { method: 'DELETE' })
       toast('Tool deleted. Captured details are kept.')
-      router.push('/tools?view=captures')
+      router.push(returnHref === '/tools' ? '/tools?view=captures' : returnHref)
       router.refresh()
     } catch (err) {
       setConfirmDelete(false)
@@ -334,7 +397,10 @@ export function ToolForm({
       )}
 
       {isNew && (
-        <FormSection title="Start from a template" scope="Templates fill in the purpose, fields and sheet tab. You can change all of them.">
+        <FormSection
+          title="Start from a template"
+          scope="Templates fill in the purpose, fields and sheet tab. You can change all of them."
+        >
           <div className="grid gap-3 sm:grid-cols-2">
             {TEMPLATES.map((template) => (
               <button
@@ -344,14 +410,19 @@ export function ToolForm({
                 className="cursor-pointer rounded-md border border-line bg-inset/60 p-3 text-left transition-colors hover:bg-hover"
               >
                 <span className="block text-sm font-medium text-ink">{template.label}</span>
-                <span className="mt-0.5 block text-sm leading-5 text-ink-muted">{template.summary}</span>
+                <span className="mt-0.5 block text-sm leading-5 text-ink-muted">
+                  {template.summary}
+                </span>
               </button>
             ))}
           </div>
         </FormSection>
       )}
 
-      <FormSection title="What this tool captures" scope="The description is what decides when the AI reaches for this tool instead of another one.">
+      <FormSection
+        title="What this tool captures"
+        scope="The description is what decides when the AI reaches for this tool instead of another one."
+      >
         <Textarea
           label="When should the AI use this?"
           required
@@ -422,7 +493,9 @@ export function ToolForm({
                     <Select
                       label="Type"
                       value={field.type}
-                      onChange={(e) => patchField(index, { type: e.target.value as ToolField['type'] })}
+                      onChange={(e) =>
+                        patchField(index, { type: e.target.value as ToolField['type'] })
+                      }
                     >
                       <option value="string">Text</option>
                       <option value="number">Number</option>
@@ -454,7 +527,10 @@ export function ToolForm({
                       value={(field.options ?? []).join(', ')}
                       onChange={(e) =>
                         patchField(index, {
-                          options: e.target.value.split(',').map((o) => o.trim()).filter(Boolean),
+                          options: e.target.value
+                            .split(',')
+                            .map((o) => o.trim())
+                            .filter(Boolean),
                         })
                       }
                       hint="Comma separated, e.g. low, medium, high"
@@ -535,7 +611,9 @@ export function ToolForm({
                 ? 'A URL is saved. Leave blank to keep it.'
                 : 'Ends in /exec. It is a credential, so it is stored write-only.'
             }
-            placeholder={tool?.hasSinkUrl ? '••••••••' : 'https://script.google.com/macros/s/…/exec'}
+            placeholder={
+              tool?.hasSinkUrl ? '••••••••' : 'https://script.google.com/macros/s/…/exec'
+            }
           />
           <SecretField
             label="Shared secret"
@@ -562,12 +640,12 @@ export function ToolForm({
       </FormSection>
 
       <FormSection
-        title="Which bots can use it"
-        scope="A tool does nothing until a bot is allowed to call it."
+        title="Which agents can use it"
+        scope="A tool does nothing until an agent is allowed to call it."
       >
         {bots.length === 0 ? (
           <p className="text-sm text-ink-muted">
-            No bots exist yet.{' '}
+            No agents exist yet.{' '}
             <button
               type="button"
               onClick={() => leaveTo('/bots/new')}
@@ -587,7 +665,7 @@ export function ToolForm({
                     checked={attached.includes(bot.id)}
                     onChange={(e) =>
                       setAttached((list) =>
-                        e.target.checked ? [...list, bot.id] : list.filter((id) => id !== bot.id)
+                        e.target.checked ? [...list, bot.id] : list.filter((id) => id !== bot.id),
                       )
                     }
                     className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--color-action-primary)]"
@@ -601,7 +679,10 @@ export function ToolForm({
         )}
       </FormSection>
 
-      <FormSection title="Availability" scope="A tool that is turned off is never offered to any bot.">
+      <FormSection
+        title="Availability"
+        scope="A tool that is turned off is never offered to any agent."
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-sm font-medium text-ink">Tool is available</p>
@@ -627,7 +708,7 @@ export function ToolForm({
           {dirty && <span className="text-xs font-medium text-warning">Unsaved changes</span>}
         </div>
         <div className="flex items-center gap-2">
-          <Button type="button" variant="secondary" onClick={() => leaveTo('/tools')}>
+          <Button type="button" variant="secondary" onClick={() => leaveTo(returnHref)}>
             Cancel
           </Button>
           <Button type="submit" pending={saving} pendingLabel="Saving…" disabled={!dirty && !isNew}>
@@ -652,7 +733,7 @@ export function ToolForm({
         onConfirm={remove}
         pending={deleting}
         title={`Delete “${tool?.name ?? ''}”?`}
-        description="Details already captured are kept and stay readable under Captures. Bots lose access to this tool. This cannot be undone."
+        description="Details already captured are kept and stay readable under Captures. Assistants lose access to this tool. This cannot be undone."
         confirmLabel="Delete tool"
         pendingLabel="Deleting…"
         destructive

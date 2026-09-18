@@ -37,6 +37,7 @@ export interface AIInput {
   conversationId: string
   contactId: string
   /** Tools this bot may call. Omitted or empty = plain completion, as before. */
+  canContinue?: () => boolean
   tools?: ToolDefinition[]
   /**
    * Where the handler records the ledger rows it writes, appended as it goes.

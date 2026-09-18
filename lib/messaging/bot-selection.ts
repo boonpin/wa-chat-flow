@@ -5,7 +5,9 @@ import type { Bot } from '@/lib/ai/types'
 
 /**
  * Picks the bot that should answer, most specific binding first:
- * conversation → contact → system default → the bot flagged as default.
+ * conversation (seeded from its contact when opened) → system default → default flag.
+ * Callers opening a new conversation may supply the contact preference; running
+ * conversations use their snapshotted binding so future preferences stay separate.
  * Disabled bots are never selected.
  */
 export function selectBot(input: {

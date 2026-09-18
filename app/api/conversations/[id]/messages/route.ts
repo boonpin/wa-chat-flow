@@ -3,7 +3,11 @@ import { getSession } from '@/lib/auth/session'
 import { db } from '@/lib/db'
 import { contacts, messages } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { getConversation } from '@/lib/conversation/service'
+import {
+  getConversation,
+  updateConversation,
+  recordConversationEvent,
+} from '@/lib/conversation/service'
 import { sendOutgoingMessage } from '@/lib/messaging/outgoing'
 import { cancelAutoReply } from '@/lib/messaging/reply-scheduler'
 
@@ -13,11 +17,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
+  const body = await request.json().catch(() => ({}))
   const conversation = getConversation(id)
   if (!conversation) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const body = await request.json().catch(() => ({}))
-  const text = (body.text as string)?.trim()
+  const text = typeof body.text === 'string' ? body.text.trim() : ''
   if (!text) return NextResponse.json({ error: 'text is required' }, { status: 400 })
 
   const contact = db.select().from(contacts).where(eq(contacts.id, conversation.contactId)).get()
@@ -27,9 +31,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!sessionId) {
     return NextResponse.json(
       { error: 'This conversation is not linked to a WhatsApp number' },
-      { status: 409 }
+      { status: 409 },
     )
   }
+
+  if (body.expectedVersion !== undefined && body.expectedVersion !== conversation.replyVersion) {
+    return NextResponse.json(
+      { error: 'This conversation changed. Refresh before sending.' },
+      { status: 409 },
+    )
+  }
+  // Mode is committed before any asynchronous send; failure keeps team ownership.
+  const claimed = db.transaction(() => {
+    const next = updateConversation(
+      id,
+      { mode: 'human', status: 'open' },
+      conversation.replyVersion,
+    )
+    if (!next) return false
+    if (conversation.mode !== 'human')
+      recordConversationEvent(id, 'mode_changed', 'Your team took over to reply')
+    cancelAutoReply(id)
+    return true
+  })
+  if (!claimed)
+    return NextResponse.json(
+      { error: 'This conversation changed. Refresh before sending.' },
+      { status: 409 },
+    )
 
   // The operator is answering this burst themselves. Cancel before sending, so
   // a window that elapses mid-send cannot start a second reply to the same
@@ -51,6 +80,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // thread with its error rather than vanishing.
   return NextResponse.json(
     { ok: result.ok, error: result.error, message: stored },
-    { status: result.ok ? 200 : 502 }
+    { status: result.ok ? 200 : 502 },
   )
 }

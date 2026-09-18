@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, usePathname } from 'next/navigation'
 import {
   EmptyState,
   ErrorState,
@@ -16,6 +16,8 @@ import {
 import { ToolForm, type BotChoice, type ToolRecord } from '../tool-form'
 
 export default function EditToolPage() {
+  const technical = usePathname().startsWith('/settings/technical/google-sheets')
+  const returnHref = technical ? '/settings/technical/google-sheets' : '/tools'
   const { id } = useParams<{ id: string }>()
 
   const load = useCallback(async (signal: AbortSignal) => {
@@ -34,7 +36,7 @@ export default function EditToolPage() {
       <PageHeader
         title={tool?.name ?? 'Edit tool'}
         description={tool ? 'Changes apply to the next capture this tool makes.' : undefined}
-        back={{ href: '/tools', label: 'Tools' }}
+        back={{ href: returnHref, label: technical ? 'Google Sheets' : 'Tools' }}
       />
 
       {loading && !data ? (
@@ -59,7 +61,7 @@ export default function EditToolPage() {
           />
         </Panel>
       ) : (
-        <ToolForm tool={tool} bots={data!.bots} onBotsChanged={refresh} />
+        <ToolForm tool={tool} bots={data!.bots} onBotsChanged={refresh} returnHref={returnHref} />
       )}
     </PageBody>
   )

@@ -1,0 +1,146 @@
+{
+  "checks": [
+    "Selected: AI agents",
+    "Settings opens agents, six sections, no Overview",
+    "Selected: Technical settings",
+    "Selected: AI connections",
+    "Technical navigation is an aside inside main",
+    "Selected: Google Sheets",
+    "Selected: Google Sheets",
+    "New collection editor retains sidebar; cancel returns to Google Sheets",
+    "Selected: Google Sheets",
+    "Edit collection saves back to technical Google Sheets",
+    "Selected: Workspace preferences",
+    "Start-page preference persists after reload",
+    "Selected: Technical settings",
+    "Selected: Activity",
+    "Selected: Setup & troubleshooting",
+    "Legacy access redirects to Help article, outside Settings",
+    "Selected: Using the app",
+    "Help separates daily tasks and setup guides",
+    "Legacy auto-reply hash shortcut preserved"
+  ],
+  "reflow": [
+    {
+      "screen": "agents",
+      "width": 1440,
+      "scroll": 1440
+    },
+    {
+      "screen": "technical",
+      "width": 1440,
+      "scroll": 1440
+    },
+    {
+      "screen": "sheets",
+      "width": 1440,
+      "scroll": 1440
+    },
+    {
+      "screen": "activity",
+      "width": 1440,
+      "scroll": 1440
+    },
+    {
+      "screen": "using-help",
+      "width": 1440,
+      "scroll": 1440
+    },
+    {
+      "screen": "setup-help",
+      "width": 1440,
+      "scroll": 1440
+    },
+    {
+      "screen": "access-help",
+      "width": 1440,
+      "scroll": 1440
+    },
+    {
+      "screen": "workspace",
+      "width": 1440,
+      "scroll": 1440
+    },
+    {
+      "screen": "agents",
+      "width": 390,
+      "scroll": 390
+    },
+    {
+      "screen": "technical",
+      "width": 390,
+      "scroll": 390
+    },
+    {
+      "screen": "sheets",
+      "width": 390,
+      "scroll": 390
+    },
+    {
+      "screen": "activity",
+      "width": 390,
+      "scroll": 390
+    },
+    {
+      "screen": "using-help",
+      "width": 390,
+      "scroll": 390
+    },
+    {
+      "screen": "setup-help",
+      "width": 390,
+      "scroll": 390
+    },
+    {
+      "screen": "access-help",
+      "width": 390,
+      "scroll": 390
+    },
+    {
+      "screen": "workspace",
+      "width": 390,
+      "scroll": 390
+    },
+    {
+      "screen": "agents",
+      "width": 320,
+      "scroll": 320
+    },
+    {
+      "screen": "technical",
+      "width": 320,
+      "scroll": 320
+    },
+    {
+      "screen": "sheets",
+      "width": 320,
+      "scroll": 320
+    },
+    {
+      "screen": "activity",
+      "width": 320,
+      "scroll": 320
+    },
+    {
+      "screen": "using-help",
+      "width": 320,
+      "scroll": 320
+    },
+    {
+      "screen": "setup-help",
+      "width": 320,
+      "scroll": 320
+    },
+    {
+      "screen": "access-help",
+      "width": 320,
+      "scroll": 320
+    },
+    {
+      "screen": "workspace",
+      "width": 320,
+      "scroll": 320
+    }
+  ],
+  "pageErrors": []
+}

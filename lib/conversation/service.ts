@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { conversations, contacts, messages, waSessions, aiBots } from '@/lib/db/schema'
+import { conversations, contacts, messages, waSessions, aiBots, conversationEvents } from '@/lib/db/schema'
 import { and, desc, eq, isNotNull, like, ne, or, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -44,6 +44,8 @@ export function getOrCreateOpenConversation(input: {
     status: 'open',
     lastMessageAt: now,
     autoReplyDueAt: null,
+    replyVersion: 0,
+    aiReplyStartedAt: null,
     createdAt: now,
     updatedAt: now,
   }
@@ -82,13 +84,14 @@ export function listConversationsAwaitingReply(): Conversation[] {
 
 export function updateConversation(
   id: string,
-  patch: { mode?: ConversationMode; status?: ConversationStatus; botId?: string | null }
+  patch: { mode?: ConversationMode; status?: ConversationStatus; botId?: string | null },
+  expectedVersion?: number
 ): Conversation | undefined {
-  db.update(conversations)
-    .set({ ...patch, updatedAt: new Date().toISOString() })
-    .where(eq(conversations.id, id))
+  const result = db.update(conversations)
+    .set({ ...patch, replyVersion: sql`${conversations.replyVersion} + 1`, updatedAt: new Date().toISOString() })
+    .where(expectedVersion === undefined ? eq(conversations.id, id) : and(eq(conversations.id, id), eq(conversations.replyVersion, expectedVersion)))
     .run()
-  return getConversation(id)
+  return result.changes ? getConversation(id) : undefined
 }
 
 export interface ConversationListItem {
@@ -126,7 +129,7 @@ export function listConversations(filter: {
       ),
     })
     .from(messages)
-    .where(ne(messages.content, ''))
+    .where(and(ne(messages.content, ''), ne(messages.senderType, 'system')))
     .as('last_message')
 
   const conditions = []
@@ -173,4 +176,11 @@ export function listMessages(conversationId: string, limit = 200) {
     .all()
 
   return rows.reverse()
+}
+
+
+export function recordConversationEvent(conversationId: string, kind: string, detail: string) {
+  const conversation = getConversation(conversationId)
+  if (!conversation) return
+  db.insert(conversationEvents).values({ id: uuidv4(), conversationId, contactId: conversation.contactId, kind, detail, createdAt: new Date().toISOString() }).run()
 }

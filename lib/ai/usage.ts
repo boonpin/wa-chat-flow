@@ -16,7 +16,7 @@ import type { TokenUsage } from './providers/types'
  */
 
 /** Which pass spent the tokens. See `ai_usage.stage`. */
-export type UsageStage = 'reply' | 'image' | 'voice'
+export type UsageStage = 'reply' | 'image' | 'voice' | 'preview'
 
 export interface UsageEntry {
   connection: BotConnection
@@ -55,6 +55,7 @@ export function recordUsage(entry: UsageEntry): string | null {
         totalTokens: entry.usage?.totalTokens ?? 0,
         round: entry.round,
         stage: entry.stage ?? 'reply',
+        usageKnown: entry.usage !== undefined,
         status: entry.error ? 'failed' : 'ok',
         error: entry.error ?? null,
         latencyMs: entry.latencyMs,

@@ -198,3 +198,13 @@ async function flush(conversationId: string): Promise<void> {
     globalThis.__replyInFlight.delete(conversationId)
   }
 }
+
+
+/** Explicit handback answers an outstanding eligible burst once. */
+export function resumeConversationReply(conversationId: string): void {
+  const context = buildContext(conversationId)
+  const eligible = context.pendingRows.some((row) => triageIncoming({ type: row.messageType, text: row.content } as Parameters<typeof triageIncoming>[0]).action === 'answer')
+  if (!eligible) return
+  setAutoReplyDueAt(conversationId, new Date(Date.now() + 250).toISOString())
+  arm(conversationId, 250)
+}

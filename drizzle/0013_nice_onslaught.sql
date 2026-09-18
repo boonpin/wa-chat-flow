@@ -1,0 +1,1 @@
+ALTER TABLE `business_profiles` ADD `agent_role` text DEFAULT '' NOT NULL;

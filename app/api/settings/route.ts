@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { systemSettings, aiBots } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
 import { AUTO_REPLY_MODES, isAutoReplyMode, type AutoReplyMode } from '@/lib/settings/auto-reply'
 import {
@@ -39,7 +39,7 @@ export async function PUT(req: NextRequest) {
     if (!isAutoReplyMode(body.autoReplyMode)) {
       return NextResponse.json(
         { error: `autoReplyMode must be one of: ${AUTO_REPLY_MODES.join(', ')}` },
-        { status: 400 }
+        { status: 400 },
       )
     }
     patch.autoReplyMode = body.autoReplyMode
@@ -50,20 +50,26 @@ export async function PUT(req: NextRequest) {
   if ('replyWindowSeconds' in body || 'replyMaxWaitSeconds' in body) {
     // Rejected rather than clamped: silently widening a window an operator
     // typed would leave the page showing a number the bot does not use.
-    if ('replyWindowSeconds' in body && !isReplyTimingValue(body.replyWindowSeconds, REPLY_WINDOW_BOUNDS)) {
+    if (
+      'replyWindowSeconds' in body &&
+      !isReplyTimingValue(body.replyWindowSeconds, REPLY_WINDOW_BOUNDS)
+    ) {
       return NextResponse.json(
         {
           error: `replyWindowSeconds must be a whole number between ${REPLY_WINDOW_BOUNDS.min} and ${REPLY_WINDOW_BOUNDS.max}`,
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
-    if ('replyMaxWaitSeconds' in body && !isReplyTimingValue(body.replyMaxWaitSeconds, REPLY_MAX_WAIT_BOUNDS)) {
+    if (
+      'replyMaxWaitSeconds' in body &&
+      !isReplyTimingValue(body.replyMaxWaitSeconds, REPLY_MAX_WAIT_BOUNDS)
+    ) {
       return NextResponse.json(
         {
           error: `replyMaxWaitSeconds must be a whole number between ${REPLY_MAX_WAIT_BOUNDS.min} and ${REPLY_MAX_WAIT_BOUNDS.max}`,
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -71,8 +77,12 @@ export async function PUT(req: NextRequest) {
     // about a ceiling that sits below the window it is supposed to cap.
     const current = db.select().from(systemSettings).where(eq(systemSettings.id, 'default')).get()
     const timing = normalizeReplyTiming({
-      windowSeconds: ('replyWindowSeconds' in body ? body.replyWindowSeconds : current?.replyWindowSeconds) as number,
-      maxWaitSeconds: ('replyMaxWaitSeconds' in body ? body.replyMaxWaitSeconds : current?.replyMaxWaitSeconds) as number,
+      windowSeconds: ('replyWindowSeconds' in body
+        ? body.replyWindowSeconds
+        : current?.replyWindowSeconds) as number,
+      maxWaitSeconds: ('replyMaxWaitSeconds' in body
+        ? body.replyMaxWaitSeconds
+        : current?.replyMaxWaitSeconds) as number,
     })
     patch.replyWindowSeconds = timing.windowSeconds
     patch.replyMaxWaitSeconds = timing.maxWaitSeconds
@@ -87,7 +97,10 @@ export async function PUT(req: NextRequest) {
   }
 
   if (Object.keys(patch).length > 0) {
-    db.update(systemSettings).set(patch).where(eq(systemSettings.id, 'default')).run()
+    db.update(systemSettings)
+      .set({ ...patch, replyVersion: sql`${systemSettings.replyVersion} + 1` })
+      .where(eq(systemSettings.id, 'default'))
+      .run()
   }
 
   const settings = db.select().from(systemSettings).where(eq(systemSettings.id, 'default')).get()

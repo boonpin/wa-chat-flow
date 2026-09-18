@@ -34,7 +34,7 @@ export default function EditAiProviderPage() {
         description={
           provider ? 'Changes take effect for new replies as soon as you save.' : undefined
         }
-        back={{ href: '/ai-providers', label: 'AI providers' }}
+        back={{ href: '/ai-providers', label: "AI connection" }}
       />
 
       {loading && !data ? (
@@ -54,7 +54,7 @@ export default function EditAiProviderPage() {
             description="It may have been deleted from another session."
             action={
               <LinkButton href="/ai-providers" variant="secondary" size="sm">
-                Back to AI providers
+                Back to AI connection
               </LinkButton>
             }
           />

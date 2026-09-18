@@ -59,6 +59,7 @@ export class DirectAIHandler implements AIHandler {
     let usage = ZERO_USAGE
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      if (input.canContinue && !input.canContinue()) return { text: '', toolRuns: runs, usage, connection }
       // On the final round, drop the tools entirely: the model has spent its
       // budget and must now answer the customer in words.
       const exhausted = round === MAX_TOOL_ROUNDS
@@ -76,6 +77,7 @@ export class DirectAIHandler implements AIHandler {
       turns.push({ role: 'assistant_tool_calls', calls: response.calls })
 
       for (const call of response.calls) {
+        if (input.canContinue && !input.canContinue()) return { text: '', toolRuns: runs, usage, connection }
         const result = await executeTool(call, toToolContext(input))
         runs.push({ call, result })
         turns.push({

@@ -13,7 +13,8 @@
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "backup": "tsx --env-file-if-exists=.env scripts/backup.ts",
     "test:format": "tsx scripts/check-channel-format.ts",
-    "test:media": "tsx scripts/check-media.ts"
+    "test:media": "tsx scripts/check-media.ts",
+    "test:uiux": "tsx scripts/check-uiux.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

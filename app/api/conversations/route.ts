@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { listConversations, type ConversationStatus } from '@/lib/conversation/service'
+import { conversationQueue } from '@/lib/conversation/attention'
 import { resumePendingReplies } from '@/lib/messaging/reply-scheduler'
 
 export async function GET(request: NextRequest) {
@@ -17,11 +18,15 @@ export async function GET(request: NextRequest) {
   const status =
     statusParam === 'open' || statusParam === 'resolved' ? (statusParam as ConversationStatus) : undefined
 
+  if (params.get('view') === 'queue') return NextResponse.json(conversationQueue({
+    status, mode: params.get('mode') ?? undefined, search: params.get('search') ?? undefined,
+    attention: params.get('attention') === 'true', page: Number(params.get('page')) || 1, limit: Number(params.get('limit')) || 25,
+  }))
   return NextResponse.json(
     listConversations({
       status,
       search: params.get('search') ?? undefined,
-      limit: params.get('limit') ? parseInt(params.get('limit')!, 10) : undefined,
+      limit: Math.min(100, Math.max(1, Number(params.get('limit')) || 100)),
     })
   )
 }

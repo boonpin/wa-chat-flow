@@ -1,0 +1,68 @@
+{
+  "checks": [
+    "Multiple agent management visible in business Settings",
+    "Two independent guided agents created; original bot IDs, prompts and tools preserved",
+    "Editing sales preserves support configuration",
+    "Preview UI targets the selected saved agent (provider response mocked)",
+    "Custom prompt retained on Cancel; confirmed conversion preserves tools, default and other bot",
+    "Contacts sets future sales agent; Inbox independently sets current support agent",
+    "Legacy business setup entry opens multiple-agent list"
+  ],
+  "observations": [
+    {
+      "name": "settings",
+      "width": 1440,
+      "scroll": 1440,
+      "viewport": 1440
+    },
+    {
+      "name": "agents",
+      "width": 1440,
+      "scroll": 1440,
+      "viewport": 1440
+    },
+    {
+      "name": "agent-details",
+      "width": 1440,
+      "scroll": 1440,
+      "viewport": 1440
+    },
+    {
+      "name": "settings",
+      "width": 390,
+      "scroll": 390,
+      "viewport": 390
+    },
+    {
+      "name": "agents",
+      "width": 390,
+      "scroll": 390,
+      "viewport": 390
+    },
+    {
+      "name": "agent-details",
+      "width": 390,
+      "scroll": 390,
+      "viewport": 390
+    },
+    {
+      "name": "settings",
+      "width": 320,
+      "scroll": 320,
+      "viewport": 320
+    },
+    {
+      "name": "agents",
+      "width": 320,
+      "scroll": 320,
+      "viewport": 320
+    },
+    {
+      "name": "agent-details",
+      "width": 320,
+      "scroll": 320,
+      "viewport": 320
+    }
+  ],
+  "errors": []
+}

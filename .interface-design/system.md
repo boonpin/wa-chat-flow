@@ -54,8 +54,9 @@ copy without changing the backend would make the app lie.
   you got — hence "Reported connected" and a visible last-checked time.
 - `sent` means the gateway accepted the message. It is not delivered or read.
 - A stored API key or sheet credential means *saved*, never *tested*.
-- The conversation list caps at 100 and a transcript at 200 messages, so counts
-  on those screens say "recent" rather than implying a total.
+- Inbox uses server-filtered pages of 25 and full-record queue totals. Legacy list
+  consumers retain the 100-record cap; transcripts retain a 200-message cap.
+  Activity supplies paginated history. Do not imply the visible transcript is complete.
 - Cancelling a campaign marks **every** recipient skipped, including ones already
   sent. The cancel confirmation says so rather than pretending the list still
   distinguishes them.
@@ -69,8 +70,8 @@ Adopted 16 September 2026. The human is an SME owner checking whether automation
 is worth keeping. The report should feel like a short evidence review, not an
 advertising dashboard.
 
-- **Focal pattern:** AI reply turns → estimated time → labor value − AI cost →
-  estimated net savings. Recorded facts and estimates remain visually and
+- **Focal pattern:** AI reply turns → estimated time → staff-time value − subscription, other charges and separately billed AI →
+  estimated value after costs. Recorded facts and estimates remain visually and
   verbally distinct, and every estimate names its assumptions.
 - **Metric figure:** 12px/500 secondary label · 28px/600 tabular primary value ·
   12–13px supporting or comparison copy. Do not uppercase labels.
@@ -82,3 +83,37 @@ advertising dashboard.
   records remain visible, and incomplete costs are marked in text.
 - **Panels:** quiet border, no lift, 16px phone / 20px desktop padding. Charts
   use semantic surfaces and include a readable table equivalent.
+
+## SME workflow patterns — 16 September 2026
+
+- Inbox and Dashboard lead navigation. Settings groups infrequent setup and has content navigation within Technical settings. Multiple AI agents remain visible in the business group; they are not an advanced-only capability.
+- Takeover changes this conversation only. Contact defaults affect future threads. Sending while in AI mode says “Take over and send”.
+- Ownership and lifecycle are separate; enabled AI is never represented as active generation.
+- Segmented controls wrap at phone widths, use 44px touch targets, and support arrow/Home/End selection.
+- Dashboard and report share BusinessValue; unknown amounts are not zero. Included AI is never subtracted twice. Past estimates use current assumptions, explicitly disclosed.
+- Activity starts with contacts grouped by stable ID. A conversation timeline reads oldest first; contact/global events read latest first. Manual Refresh preserves reading order.
+- Guided preview has no tools or message transport; it may incur AI charges. Prompt handoff instructions do not imply a staff notification occurred.
+
+## Multiple-agent scope
+
+Single tenancy is one business, not one AI robot. Use **AI agents** for the existing
+AI Bot management surface, **Agent** for a selection, and show the chosen name in
+conversation status. Each guided profile and preview targets one agent. Existing
+custom prompts require explicit confirmation before guided replacement; preserve
+provider, enabled/default state and collection tools. Contacts sets future selection;
+Inbox sets the active selection. Team-assigned groups are not automatic classification.
+
+## Settings and Help content navigation
+
+SettingsNavigation sits above Settings module headings inside main. Real-link RouteTabs
+list AI agents, WhatsApp numbers, Automatic replies, Customer details, Savings estimates
+and Technical settings. Settings opens AI agents; there is no Overview tab.
+Agent children select AI agents. Provider, Activity and technical subroutes select Technical settings.
+TechnicalSettingsFrame adds a 200px side navigation inside the content container: AI connections,
+Google Sheets, Activity and Workspace preferences. It becomes a two-column link group above
+content on phones. Google Sheets shares the collection editor and preserves its technical route
+on save/cancel. Start-page preferences live under Workspace preferences.
+HelpNavigation has Using the app and Setup & troubleshooting tabs. Access/setup and Google
+Sheets reference articles belong to the latter. Configuration stays in Settings.
+Use 44px touch targets (40px desktop), visible focus and aria-current. Daily-work pages omit
+Settings navigation. Labels and route ownership come from lib/settings/navigation.ts.

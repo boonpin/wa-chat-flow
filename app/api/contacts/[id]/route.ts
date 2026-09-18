@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { contacts, conversations } from '@/lib/db/schema'
-import { and, eq } from 'drizzle-orm'
+import { contacts, aiBots } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
-import { cancelAutoReply } from '@/lib/messaging/reply-scheduler'
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -16,10 +15,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const body = await req.json().catch(() => ({}))
 
   // Whitelist: phone number and timestamps are not client-editable.
-  const patch: { name?: string; aiEnabled?: boolean; aiBotId?: string | null; waSessionId?: string | null } = {}
+  const patch: {
+    name?: string
+    aiEnabled?: boolean
+    aiBotId?: string | null
+    waSessionId?: string | null
+  } = {}
   if (typeof body.name === 'string') patch.name = body.name.trim()
   if (typeof body.aiEnabled === 'boolean') patch.aiEnabled = body.aiEnabled
-  if ('aiBotId' in body) patch.aiBotId = body.aiBotId || null
+  if ('aiBotId' in body) {
+    if (body.aiBotId !== null && body.aiBotId !== '' && typeof body.aiBotId !== 'string')
+      return NextResponse.json({ error: 'Choose a valid AI agent.' }, { status: 400 })
+    patch.aiBotId = body.aiBotId || null
+    if (patch.aiBotId && !db.select().from(aiBots).where(eq(aiBots.id, patch.aiBotId)).get())
+      return NextResponse.json(
+        { error: 'This AI agent no longer exists. Refresh before choosing it.' },
+        { status: 400 },
+      )
+  }
   if ('waSessionId' in body) patch.waSessionId = body.waSessionId || null
 
   if (Object.keys(patch).length === 0) {
@@ -31,25 +44,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .where(eq(contacts.id, id))
     .run()
 
-  // The contact-level AI toggle is the default for new threads; apply it to the
-  // open one too so the switch does what the operator expects right now.
-  if (patch.aiEnabled !== undefined) {
-    const open = db
-      .select({ id: conversations.id })
-      .from(conversations)
-      .where(and(eq(conversations.contactId, id), eq(conversations.status, 'open')))
-      .all()
-
-    db.update(conversations)
-      .set({ mode: patch.aiEnabled ? 'auto' : 'human', updatedAt: new Date().toISOString() })
-      .where(and(eq(conversations.contactId, id), eq(conversations.status, 'open')))
-      .run()
-
-    // Same reason as the Inbox toggle: a window already open would otherwise
-    // deliver one last AI reply after the switch was turned off.
-    if (!patch.aiEnabled) for (const row of open) cancelAutoReply(row.id)
-  }
-
+  // Contact preferences seed future conversations; takeover belongs to Inbox.
   const contact = db.select().from(contacts).where(eq(contacts.id, id)).get()
   return NextResponse.json(contact)
 }

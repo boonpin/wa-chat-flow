@@ -30,12 +30,14 @@ type UsageRow = Pick<
   | 'botId'
   | 'conversationId'
   | 'messageId'
+  | 'stage'
   | 'kind'
   | 'model'
   | 'inputTokens'
   | 'outputTokens'
   | 'totalTokens'
   | 'status'
+  | 'usageKnown'
   | 'createdAt'
 >
 type RateRow = typeof aiModelRates.$inferSelect
@@ -134,7 +136,7 @@ function usageSummary(rows: UsageRow[], rates: RateRow[], currency: string): Imp
     summary.inputTokens += row.inputTokens
     summary.outputTokens += row.outputTokens
     summary.totalTokens += row.totalTokens
-    const rate = latestRate(rates, row, currency)
+    const rate = row.usageKnown ? latestRate(rates, row, currency) : null
     if (!rate) {
       summary.unpricedCalls++
       summary.costComplete = false
@@ -152,7 +154,7 @@ function usageSummary(rows: UsageRow[], rates: RateRow[], currency: string): Imp
 function estimate(
   aiReplies: number,
   usage: ImpactUsage,
-  assumptions: Pick<ImpactAssumptions, 'manualReplyMinutes' | 'laborCostMinor'>
+  assumptions: Pick<ImpactAssumptions, 'manualReplyMinutes' | 'laborCostMinor'>,
 ): ImpactEstimates {
   const savedMinutes =
     assumptions.manualReplyMinutes === null ? null : aiReplies * assumptions.manualReplyMinutes
@@ -163,6 +165,8 @@ function estimate(
   const aiCostMicros = usage.costComplete ? usage.costMicros : null
 
   return {
+    serviceCostMicros: null,
+    recurringCostMicros: null,
     savedMinutes,
     laborValueMicros,
     aiCostMicros,
@@ -177,15 +181,19 @@ function periodSummary(
   rates: RateRow[],
   assumptions: ImpactAssumptions,
   from: string,
-  to: string
+  to: string,
 ): ImpactPeriodSummary {
-  const replies = allMessages.filter((row) => isServiceReply(row) && inPeriod(row.createdAt, from, to))
+  const replies = allMessages.filter(
+    (row) => isServiceReply(row) && inPeriod(row.createdAt, from, to),
+  )
   const aiReplies = replies.filter((row) => row.senderType === 'ai')
   const humanReplies = replies.filter((row) => row.senderType === 'human')
   const response = responseTimes(allMessages, from, to)
   const periodUsage = allUsage.filter((row) => inPeriod(row.createdAt, from, to))
   const usage = usageSummary(periodUsage, rates, assumptions.currency)
-  const linkedReplyIds = new Set(periodUsage.flatMap((row) => (row.messageId ? [row.messageId] : [])))
+  const linkedReplyIds = new Set(
+    periodUsage.flatMap((row) => (row.messageId ? [row.messageId] : [])),
+  )
   usage.untrackedReplies = aiReplies.filter((row) => !linkedReplyIds.has(row.id)).length
   if (usage.untrackedReplies > 0) usage.costComplete = false
   const totalReplies = aiReplies.length + humanReplies.length
@@ -200,12 +208,23 @@ function periodSummary(
     medianHumanResponseMs: median(response.human),
   }
 
-  return { actuals, usage, estimates: estimate(aiReplies.length, usage, assumptions) }
+  const estimates = estimate(aiReplies.length, usage, assumptions)
+  estimates.recurringCostMicros = recurringPeriodCost(assumptions, from, to)
+  const chargedAiCost = assumptions.aiCostIncluded ? 0 : estimates.aiCostMicros
+  estimates.serviceCostMicros =
+    estimates.recurringCostMicros === null || chargedAiCost === null
+      ? null
+      : estimates.recurringCostMicros + chargedAiCost
+  estimates.netSavingsMicros =
+    estimates.laborValueMicros === null || estimates.serviceCostMicros === null
+      ? null
+      : estimates.laborValueMicros - estimates.serviceCostMicros
+  return { actuals, usage, estimates }
 }
 
 function dateKeys(from: Date, days: number): string[] {
   return Array.from({ length: days }, (_, index) =>
-    new Date(from.getTime() + index * DAY_MS).toISOString().slice(0, 10)
+    new Date(from.getTime() + index * DAY_MS).toISOString().slice(0, 10),
   )
 }
 
@@ -214,13 +233,19 @@ function buildTrend(
   usage: UsageRow[],
   from: Date,
   rangeDays: ImpactRange,
-  manualReplyMinutes: number | null
+  manualReplyMinutes: number | null,
 ): ImpactTrendPoint[] {
   const points = new Map(
     dateKeys(from, rangeDays).map((date) => [
       date,
-      { date, aiReplies: 0, humanReplies: 0, savedMinutes: manualReplyMinutes === null ? null : 0, tokens: 0 },
-    ])
+      {
+        date,
+        aiReplies: 0,
+        humanReplies: 0,
+        savedMinutes: manualReplyMinutes === null ? null : 0,
+        tokens: 0,
+      },
+    ]),
   )
   for (const row of rows) {
     if (!isServiceReply(row)) continue
@@ -245,8 +270,20 @@ function buildBreakdown(
   rates: RateRow[],
   assumptions: ImpactAssumptions,
   botNames: Map<string, string>,
-  aiReplyIds: ReadonlySet<string>
+  aiReplyIds: ReadonlySet<string>,
 ): ImpactBreakdownRow[] {
+  // Attribute one reply's avoided work once, even when preprocessing used another model.
+  const finalReplyCalls = new Map<string, string>()
+  for (const row of usageRows) {
+    if (
+      row.messageId &&
+      aiReplyIds.has(row.messageId) &&
+      row.stage === 'reply' &&
+      row.status === 'ok'
+    ) {
+      finalReplyCalls.set(row.messageId, row.id)
+    }
+  }
   const groups = new Map<string, UsageRow[]>()
   for (const row of usageRows) {
     const key = `${row.botId ?? 'deleted'}\u0000${row.kind}\u0000${row.model}`
@@ -259,14 +296,16 @@ function buildBreakdown(
     .map(([key, rows]) => {
       const usage = usageSummary(rows, rates, assumptions.currency)
       const replyIds = new Set(
-        rows.flatMap((row) => (row.messageId && aiReplyIds.has(row.messageId) ? [row.messageId] : []))
+        rows.flatMap((row) =>
+          row.messageId && finalReplyCalls.get(row.messageId) === row.id ? [row.messageId] : [],
+        ),
       )
       const conversationIds = new Set(
         rows.flatMap((row) =>
-          row.messageId && aiReplyIds.has(row.messageId) && row.conversationId
+          row.messageId && finalReplyCalls.get(row.messageId) === row.id && row.conversationId
             ? [row.conversationId]
-            : []
-        )
+            : [],
+        ),
       )
       const estimates = estimate(replyIds.size, usage, assumptions)
       const first = rows[0]
@@ -329,6 +368,10 @@ export function getImpactAssumptions(): ImpactAssumptions {
     manualReplyMinutes: settings?.manualReplyMinutes ?? null,
     laborCostMinor: settings?.laborCostMinor ?? null,
     currency,
+    subscriptionCostMinor: settings?.subscriptionCostMinor ?? null,
+    otherMonthlyCostMinor: settings?.otherMonthlyCostMinor ?? null,
+    billingAnchor: settings?.billingAnchor ?? null,
+    aiCostIncluded: settings?.aiCostIncluded ?? false,
     rates: [...modelKeys.entries()]
       .map(([key, item]) => {
         const rate = latest.get(key)
@@ -350,7 +393,8 @@ export function getImpactReport(rangeDays: ImpactRange): ImpactReport {
   // guarantee that today's activity has a trend column.
   const today = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()))
   const from = new Date(today.getTime() - (rangeDays - 1) * DAY_MS)
-  const previousFrom = new Date(from.getTime() - rangeDays * DAY_MS)
+  const previousTo = new Date(from)
+  const previousFrom = new Date(from.getTime() - (to.getTime() - from.getTime()))
   const queryFrom = new Date(previousFrom.getTime() - DAY_MS)
   const toIso = to.toISOString()
   const fromIso = from.toISOString()
@@ -377,11 +421,13 @@ export function getImpactReport(rangeDays: ImpactRange): ImpactReport {
       botId: aiUsage.botId,
       conversationId: aiUsage.conversationId,
       messageId: aiUsage.messageId,
+      stage: aiUsage.stage,
       kind: aiUsage.kind,
       model: aiUsage.model,
       inputTokens: aiUsage.inputTokens,
       outputTokens: aiUsage.outputTokens,
       totalTokens: aiUsage.totalTokens,
+      usageKnown: aiUsage.usageKnown,
       status: aiUsage.status,
       createdAt: aiUsage.createdAt,
     })
@@ -392,22 +438,26 @@ export function getImpactReport(rangeDays: ImpactRange): ImpactReport {
 
   const rates = db.select().from(aiModelRates).orderBy(asc(aiModelRates.effectiveFrom)).all()
   const assumptions = getImpactAssumptions()
-  const botNames = new Map(db.select({ id: aiBots.id, name: aiBots.name }).from(aiBots).all().map((b) => [b.id, b.name]))
+  const botNames = new Map(
+    db
+      .select({ id: aiBots.id, name: aiBots.name })
+      .from(aiBots)
+      .all()
+      .map((b) => [b.id, b.name]),
+  )
   const currentAiReplyIds = new Set(
     messageRows
       .filter(
         (row) =>
-          inPeriod(row.createdAt, fromIso, toIso) &&
-          isServiceReply(row) &&
-          row.senderType === 'ai'
+          inPeriod(row.createdAt, fromIso, toIso) && isServiceReply(row) && row.senderType === 'ai',
       )
-      .map((row) => row.id)
+      .map((row) => row.id),
   )
 
   return {
     rangeDays,
     period: { from: fromIso, to: toIso },
-    previousPeriod: { from: previousFromIso, to: fromIso },
+    previousPeriod: { from: previousFromIso, to: previousTo.toISOString() },
     current: periodSummary(messageRows, usageRows, rates, assumptions, fromIso, toIso),
     previous: periodSummary(messageRows, usageRows, rates, assumptions, previousFromIso, fromIso),
     trend: buildTrend(
@@ -415,16 +465,55 @@ export function getImpactReport(rangeDays: ImpactRange): ImpactReport {
       usageRows.filter((row) => inPeriod(row.createdAt, fromIso, toIso)),
       from,
       rangeDays,
-      assumptions.manualReplyMinutes
+      assumptions.manualReplyMinutes,
     ),
     breakdown: buildBreakdown(
       usageRows.filter((row) => inPeriod(row.createdAt, fromIso, toIso)),
       rates,
       assumptions,
       botNames,
-      currentAiReplyIds
+      currentAiReplyIds,
     ),
     assumptions,
     generatedAt: generatedAt.toISOString(),
   }
+}
+
+/** Monthly charges allocated over actual UTC billing cycles, anchor day clamped. */
+export function recurringPeriodCost(
+  assumptions: Pick<
+    ImpactAssumptions,
+    'subscriptionCostMinor' | 'otherMonthlyCostMinor' | 'billingAnchor'
+  >,
+  from: string,
+  to: string,
+): number | null {
+  if (
+    assumptions.subscriptionCostMinor === null ||
+    assumptions.otherMonthlyCostMinor === null ||
+    !assumptions.billingAnchor
+  )
+    return null
+  const anchor = new Date(assumptions.billingAnchor + 'T00:00:00.000Z')
+  const start = new Date(from).getTime(),
+    end = new Date(to).getTime()
+  if (!Number.isFinite(anchor.getTime()) || end < start) return null
+  const day = anchor.getUTCDate()
+  function boundary(year: number, month: number) {
+    return Date.UTC(year, month, Math.min(day, new Date(Date.UTC(year, month + 1, 0)).getUTCDate()))
+  }
+  const year = new Date(start).getUTCFullYear()
+  let month = new Date(start).getUTCMonth()
+  if (boundary(year, month) > start) month--
+  let result = 0
+  for (let i = 0; i < 6; i++, month++) {
+    const a = boundary(year, month),
+      b = boundary(year, month + 1)
+    if (a >= end) break
+    const overlap = Math.max(0, Math.min(end, b) - Math.max(start, a, anchor.getTime()))
+    result +=
+      ((assumptions.subscriptionCostMinor + assumptions.otherMonthlyCostMinor) * 10_000 * overlap) /
+      (b - a)
+  }
+  return result
 }

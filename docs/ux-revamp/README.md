@@ -1,6 +1,10 @@
 # WA Robot — Phase 1 UI/UX proposal
 
-Status: **Proposed, not implemented.** Prepared 6 September 2026.
+Status: **Historical proposal**, prepared 6 September 2026. The shared visual system
+was implemented on 6 September. The current SME workflow enhancements were implemented
+on 16 September; see [the current plan and execution record](../uiux-enhance-20260916.md)
+and [implementation evidence](./evidence/20260916/README.md). The proposal below preserves
+its original recommendations and is not the current route or behavior contract.
 
 WA Robot should become a calm operational workspace where an SME owner or operator can answer three questions immediately: **Which customer needs me? Can this WhatsApp number communicate? What will the AI do next?**
 

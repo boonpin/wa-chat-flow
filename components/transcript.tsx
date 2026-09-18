@@ -109,7 +109,7 @@ function mediaNote(message: TranscriptMessage): string | null {
 const SENDER_LABEL: Record<TranscriptMessage['senderType'], string | null> = {
   customer: null,
   ai: 'AI',
-  human: 'You',
+  human: 'Your team',
   system: null,
 }
 
@@ -265,11 +265,13 @@ function MessageBubble({ message }: { message: TranscriptMessage }) {
 export function Transcript({
   messages,
   scrollRef,
+  onScroll,
   header,
   emptyLabel = 'No messages in this conversation yet.',
 }: {
   messages: TranscriptMessage[]
   scrollRef?: React.RefObject<HTMLDivElement | null>
+  onScroll?: React.UIEventHandler<HTMLDivElement>
   header?: ReactNode
   emptyLabel?: string
 }) {
@@ -282,7 +284,7 @@ export function Transcript({
   }
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-canvas px-2 py-4 md:px-3">
+    <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto bg-canvas px-2 py-4 md:px-3">
       {header}
       {messages.length === 0 ? (
         <p className="py-10 text-center text-sm text-ink-soft">{emptyLabel}</p>
@@ -328,7 +330,9 @@ export function Composer({
   disabled,
   disabledReason,
   notice,
-  placeholder = 'Type a reply…',
+  placeholder = 'Write your reply…',
+  sendLabel = 'Send',
+  inputRef,
 }: {
   value: string
   onChange: (next: string) => void
@@ -338,6 +342,8 @@ export function Composer({
   disabledReason?: string
   notice?: ReactNode
   placeholder?: string
+  sendLabel?: string
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>
 }) {
   const composing = useRef(false)
   const [rows, setRows] = useState(2)
@@ -356,6 +362,7 @@ export function Composer({
         <label className="min-w-0 flex-1">
           <span className="sr-only">Message</span>
           <textarea
+            ref={inputRef}
             value={value}
             onChange={(e) => {
               onChange(e.target.value)
@@ -386,7 +393,7 @@ export function Composer({
           className="shrink-0"
         >
           <SendIcon size={15} />
-          Send
+          {sendLabel}
         </Button>
       </div>
       <p className="mt-1.5 text-xs text-ink-soft">

@@ -160,7 +160,7 @@ export default function NewCampaignPage() {
       <PageHeader
         title="Create campaign"
         description="Saving creates a draft. Sending is a separate, confirmed step."
-        back={{ href: '/campaigns', label: 'Campaigns' }}
+        back={{ href: '/campaigns', label: "Broadcasts" }}
       />
 
       <div className="space-y-5">
@@ -196,7 +196,7 @@ export default function NewCampaignPage() {
             <Banner tone="warning" title={`“${channel.sessionName}” is not reported connected`}>
               You can still save this draft, but sending will fail until the number is connected.{' '}
               <Link href="/channels/whatsapp" className="font-semibold underline underline-offset-2">
-                Open WhatsApp channels
+                Open WhatsApp numbers
               </Link>
             </Banner>
           )}

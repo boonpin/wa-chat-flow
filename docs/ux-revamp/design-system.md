@@ -1,6 +1,6 @@
 # WA Robot shared design system
 
-**Status: Phase 1 proposal.** This is the proposed single design contract for all later phases. It is not an already-adopted `.interface-design/system.md`, and no runtime tokens have been changed.
+**Status: Adopted.** Runtime tokens and shared components were implemented on 6 September 2026. SME workflow patterns were extended on 16 September; see [.interface-design/system.md](../../.interface-design/system.md) for implementation decisions and the current honesty requirements. Original direction rationale is retained below.
 
 ## Direction and rationale
 
@@ -8,7 +8,7 @@
 
 **Color world:** off-white correspondence paper, dark green business signage, charcoal printed receipts, blue handwritten annotations, amber pending-work slips, red corrections. These become a quiet neutral canvas, deep green action, dark ink text, blue AI identity, amber attention and red confirmed failure.
 
-**Signature:** the reply status line separates **channel**, **AI/human reply mode**, **bot/fallback**, and **known blockers**. It appears in the shell, Overview, Inbox, contact profile and setup reviews. The signature is meaningful operational context, not a decorative robot mascot.
+**Signature:** the reply status line separates **channel**, **AI/human reply mode**, **selected AI agent/fallback**, and **known blockers**. It appears in the shell, Overview, Inbox, contact profile and setup reviews. The signature is meaningful operational context, not a decorative robot mascot.
 
 **Common defaults replaced:**
 

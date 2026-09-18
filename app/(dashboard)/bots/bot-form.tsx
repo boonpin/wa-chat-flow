@@ -22,6 +22,10 @@ import { providerLabel } from '@/lib/ai/provider-kinds'
 
 export interface BotRecord {
   id: string
+  agentRole?: string | null
+  guidedSetup?: boolean
+  handlerType?: string
+  updatedAt?: string
   name: string
   /** The AI provider row this bot answers through. */
   providerId: string | null
@@ -125,10 +129,7 @@ export function BotForm({
   const [deleting, setDeleting] = useState(false)
 
   const baseline = useMemo(() => initialState(bot, providers), [bot, providers])
-  const dirty = useMemo(
-    () => JSON.stringify(form) !== JSON.stringify(baseline),
-    [form, baseline]
-  )
+  const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(baseline), [form, baseline])
 
   useEffect(() => {
     if (!dirty) return
@@ -157,9 +158,11 @@ export function BotForm({
   async function save(e: React.FormEvent) {
     e.preventDefault()
     const nextErrors: typeof errors = {}
-    if (!form.name.trim()) nextErrors.name = 'Give this bot a name so you can recognise it later.'
-    if (!form.prompt.trim()) nextErrors.prompt = 'Instructions are required — this is what the AI answers with.'
-    if (!form.providerId) nextErrors.providerId = 'Choose the AI provider this bot answers through.'
+    if (!form.name.trim()) nextErrors.name = 'Give this agent a name so you can recognise it later.'
+    if (!form.prompt.trim())
+      nextErrors.prompt = 'Instructions are required — this is what the AI answers with.'
+    if (!form.providerId)
+      nextErrors.providerId = 'Choose the AI provider this agent answers through.'
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) {
       setSaveError('Check the highlighted fields and try again.')
@@ -183,7 +186,7 @@ export function BotForm({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        toast('Bot saved.')
+        toast('Agent saved.')
       }
       router.push('/bots')
       router.refresh()
@@ -204,18 +207,19 @@ export function BotForm({
     } catch (err) {
       setConfirmDelete(false)
       setDeleting(false)
-      toast(errorMessage(err, 'The bot was not deleted.'), 'error')
+      toast(errorMessage(err, 'The agent was not deleted.'), 'error')
     }
   }
 
   const selected = providers.find((p) => p.id === form.providerId) ?? null
 
   const impact: string[] = []
-  if (!form.enabled) impact.push('This bot will never be selected for an automatic reply while it is turned off.')
+  if (!form.enabled)
+    impact.push('This agent will never be selected for an automatic reply while it is turned off.')
   if (form.isDefault && otherDefaultName)
     impact.push(`“${otherDefaultName}” will stop being the default when you save.`)
   if (form.isDefault && !otherDefaultName)
-    impact.push('This bot will answer conversations that have no bot of their own.')
+    impact.push('This agent will answer conversations that have no agent of their own.')
 
   return (
     <form onSubmit={save} noValidate className="space-y-5">
@@ -226,14 +230,17 @@ export function BotForm({
       )}
 
       {/* Behaviour first. Model plumbing is a dependency, not the point. */}
-      <FormSection title="What this bot does" scope="The name is for you. The instructions are what the AI answers with.">
+      <FormSection
+        title="What this agent does"
+        scope="The name is for you. The instructions are what the AI answers with."
+      >
         <Input
-          label="Bot name"
+          label="Agent name"
           required
           value={form.name}
           error={errors.name}
           onChange={(e) => update('name', e.target.value)}
-          placeholder="e.g. Sales assistant"
+          placeholder="e.g. Sales agent"
         />
 
         <div>
@@ -256,20 +263,20 @@ export function BotForm({
         </div>
 
         <Textarea
-          label="Bot instructions"
+          label="Agent instructions"
           required
           rows={9}
           value={form.prompt}
           error={errors.prompt}
           onChange={(e) => update('prompt', e.target.value)}
-          hint="Describe the job, the tone and what the bot must not do. The customer never sees this text."
+          hint="Describe the job, the tone and what the agent must not do. The customer never sees this text."
           placeholder="You answer WhatsApp messages for our business…"
         />
       </FormSection>
 
       <FormSection
-        title="Tools"
-        scope="Tools let this bot save customer details to a Google Sheet mid-conversation. The AI decides when to use one from its description."
+        title="Customer details"
+        scope="Tools let this agent save customer details to a Google Sheet mid-conversation. The AI decides when to use one from its description."
         action={
           <Button type="button" variant="ghost" size="sm" onClick={() => leaveTo('/tools')}>
             Manage tools
@@ -286,7 +293,7 @@ export function BotForm({
             >
               Create one
             </button>{' '}
-            to let this bot capture enquiries.
+            to let this agent capture enquiries.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -303,7 +310,7 @@ export function BotForm({
                           'toolIds',
                           e.target.checked
                             ? [...form.toolIds, tool.id]
-                            : form.toolIds.filter((id) => id !== tool.id)
+                            : form.toolIds.filter((id) => id !== tool.id),
                         )
                       }
                       className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[var(--color-action-primary)]"
@@ -338,7 +345,7 @@ export function BotForm({
       >
         {providers.length === 0 ? (
           <Banner tone="warning" title="No AI provider exists yet">
-            A bot cannot answer without one.{' '}
+            An agent cannot answer without one.{' '}
             <button
               type="button"
               onClick={() => leaveTo('/ai-providers/new')}
@@ -356,7 +363,7 @@ export function BotForm({
               value={form.providerId}
               error={errors.providerId}
               onChange={(e) => update('providerId', e.target.value)}
-              hint="Every reply this bot sends is billed to the selected account, and its tokens are recorded against it."
+              hint="Every reply this agent sends is billed to the selected account, and its tokens are recorded against it."
             >
               <option value="" disabled>
                 Choose a provider…
@@ -381,7 +388,7 @@ export function BotForm({
               </Banner>
             )}
             {!isNew && bot && !bot.providerId && (
-              <Banner tone="danger" title="This bot has no provider">
+              <Banner tone="danger" title="This agent has no provider">
                 Its provider was deleted. Choose another one — until then, every reply fails.
               </Banner>
             )}
@@ -389,32 +396,32 @@ export function BotForm({
         )}
       </FormSection>
 
-      <FormSection title="Availability" scope="When this bot is allowed to answer.">
+      <FormSection title="Availability" scope="When this agent is allowed to answer.">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-ink">Bot is available</p>
+            <p className="text-sm font-medium text-ink">Agent is available</p>
             <p className="mt-0.5 text-sm text-ink-muted">
-              A bot that is turned off is skipped even when a conversation names it.
+              An agent that is turned off is skipped even when a conversation names it.
             </p>
           </div>
           <Switch
             checked={form.enabled}
             onChange={(v) => update('enabled', v)}
-            label={`${form.name || 'This bot'} is available`}
+            label={`${form.name || 'This agent'} is available`}
           />
         </div>
 
         <div className="flex items-start justify-between gap-4 border-t border-line-soft pt-4">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-ink">Use as the default bot</p>
+            <p className="text-sm font-medium text-ink">Use as the default agent</p>
             <p className="mt-0.5 text-sm text-ink-muted">
-              Answers conversations that have no bot of their own.
+              Answers conversations that have no agent of their own.
             </p>
           </div>
           <Switch
             checked={form.isDefault}
             onChange={(v) => update('isDefault', v)}
-            label={`Use ${form.name || 'this bot'} as the default`}
+            label={`Use ${form.name || 'this agent'} as the default`}
           />
         </div>
 
@@ -435,7 +442,7 @@ export function BotForm({
         <div className="flex items-center gap-3">
           {!isNew && (
             <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
-              Delete bot
+              Delete agent
             </Button>
           )}
           {dirty && <span className="text-xs font-medium text-warning">Unsaved changes</span>}
@@ -445,7 +452,7 @@ export function BotForm({
             Cancel
           </Button>
           <Button type="submit" pending={saving} pendingLabel="Saving…" disabled={!dirty && !isNew}>
-            {isNew ? 'Create bot' : 'Save changes'}
+            {isNew ? 'Add agent' : 'Save changes'}
           </Button>
         </div>
       </Panel>
@@ -458,7 +465,7 @@ export function BotForm({
           setPendingTemplate(null)
         }}
         title="Replace the instructions?"
-        description="This template will overwrite the instructions you have written. Nothing is saved until you save the bot."
+        description="This template will overwrite the instructions you have written. Nothing is saved until you save the agent."
         confirmLabel="Replace instructions"
       />
 
@@ -467,7 +474,7 @@ export function BotForm({
         onClose={() => setConfirmLeave(null)}
         onConfirm={() => router.push(confirmLeave!)}
         title="Discard your changes?"
-        description="This bot has edits that have not been saved."
+        description="This agent has edits that have not been saved."
         confirmLabel="Discard changes"
         destructive
       />
@@ -478,8 +485,8 @@ export function BotForm({
         onConfirm={remove}
         pending={deleting}
         title={`Delete “${bot?.name ?? ''}”?`}
-        description="Conversations that used this bot keep their messages, but they will fall back to the default bot. This cannot be undone."
-        confirmLabel="Delete bot"
+        description="Conversations that used this agent keep their messages, but they will fall back to the default agent. This cannot be undone."
+        confirmLabel="Delete agent"
         pendingLabel="Deleting…"
         destructive
       />
@@ -495,7 +502,7 @@ export function EditorFrame({ children }: { children: React.ReactNode }) {
 export function BackToBots() {
   return (
     <Link href="/bots" className="text-[13px] font-medium text-ink-muted hover:text-ink">
-      Back to AI bots
+      Back to AI agents
     </Link>
   )
 }

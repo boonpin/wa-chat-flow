@@ -1,28 +1,26 @@
 'use client'
 
 import Link from 'next/link'
+import { ChannelSettingsFrame } from '@/components/channel-settings-frame'
+import { TechnicalSettingsFrame } from '@/components/technical-settings-frame'
+import { HelpNavigation } from '@/components/help-navigation'
+import { SettingsNavigation } from '@/components/settings-navigation'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState, type ReactNode } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import {
-  ActivityIcon,
-  BotIcon,
   Button,
   CampaignIcon,
   ContactsIcon,
   Drawer,
   HelpIcon,
   InboxIcon,
-  KeyIcon,
   MenuIcon,
   OverviewIcon,
-  ReportIcon,
-  ReplySettingsIcon,
   SettingsIcon,
   SignOutIcon,
   ToastProvider,
-  ToolIcon,
-  WhatsAppIcon,
   request,
+  useAsyncData,
   useToast,
 } from '@/components/ui'
 import {
@@ -40,43 +38,41 @@ interface NavItem {
   aliases?: string[]
 }
 
-/**
- * Three daily destinations lead. Automation children are visible rather than
- * hidden behind a parent page, because opening a bot should not cost an extra
- * click. WhatsApp channels stays in reach: repairing a connection is urgent
- * when it happens.
- */
+/** Daily work leads; configuration shares content navigation inside Settings. */
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    label: 'Work',
+    label: 'Daily work',
     items: [
-      { href: '/dashboard', label: 'Overview', icon: <OverviewIcon /> },
-      { href: '/reports/impact', label: 'Impact report', icon: <ReportIcon /> },
       { href: '/inbox', label: 'Inbox', icon: <InboxIcon /> },
+      { href: '/dashboard', label: 'Dashboard', icon: <OverviewIcon /> },
+    ],
+  },
+  {
+    label: 'More',
+    items: [
       { href: '/contacts', label: 'Contacts', icon: <ContactsIcon /> },
+      { href: '/campaigns', label: 'Broadcasts', icon: <CampaignIcon />, aliases: ['/blast'] },
     ],
   },
   {
-    label: 'Automation',
+    label: '',
     items: [
-      { href: '/bots', label: 'AI bots', icon: <BotIcon /> },
-      { href: '/ai-providers', label: 'AI providers', icon: <KeyIcon /> },
-      { href: '/tools', label: 'Tools', icon: <ToolIcon /> },
-      { href: '/automation/replies', label: 'Reply settings', icon: <ReplySettingsIcon /> },
-      { href: '/campaigns', label: 'Campaigns', icon: <CampaignIcon />, aliases: ['/blast'] },
-    ],
-  },
-  {
-    label: 'WhatsApp',
-    items: [
-      { href: '/channels/whatsapp', label: 'WhatsApp channels', icon: <WhatsAppIcon />, aliases: ['/wa'] },
-    ],
-  },
-  {
-    label: 'Utility',
-    items: [
-      { href: '/activity', label: 'Activity', icon: <ActivityIcon />, aliases: ['/logs'] },
-      { href: '/settings', label: 'Settings', icon: <SettingsIcon /> },
+      {
+        href: '/settings',
+        label: 'Settings',
+        icon: <SettingsIcon />,
+        aliases: [
+          '/bots',
+          '/ai-providers',
+          '/tools',
+          '/automation',
+          '/channels',
+          '/wa',
+          '/activity',
+          '/logs',
+          '/reports/impact',
+        ],
+      },
       { href: '/help', label: 'Help', icon: <HelpIcon /> },
     ],
   },
@@ -98,6 +94,14 @@ function currentLabel(pathname: string): string {
 }
 
 function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  const loadCount = useCallback(
+    (signal: AbortSignal) =>
+      request<{ counts: { attention: number } }>('/api/conversations?view=queue&limit=1', {
+        signal,
+      }),
+    [],
+  )
+  const count = useAsyncData(loadCount, [loadCount], { pollMs: 30_000 })
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
       {NAV_GROUPS.map((group) => (
@@ -121,6 +125,14 @@ function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () 
                   >
                     <span className={active ? 'text-action' : 'text-ink-soft'}>{item.icon}</span>
                     <span className="truncate">{item.label}</span>
+                    {item.href === '/inbox' && count.data && (
+                      <span
+                        className="ml-auto rounded-full bg-inset px-2 text-xs tabular-nums"
+                        aria-label={`${count.data.counts.attention} conversations need attention`}
+                      >
+                        {count.data.counts.attention}
+                      </span>
+                    )}
                   </Link>
                 </li>
               )
@@ -149,14 +161,15 @@ function ConnectionSummary() {
         href="/channels/whatsapp"
         className="mx-3 block rounded-md border border-line px-3 py-2.5 text-xs text-ink-muted hover:bg-hover"
       >
-        <span className="font-medium text-warning">Status unavailable.</span> Open WhatsApp channels
+        <span className="font-medium text-warning">Status unavailable.</span> Open WhatsApp numbers
       </Link>
     )
   }
 
   const total = status.channels.length
   const connected = countConnected(status.channels)
-  const replyPolicy = AUTO_REPLY_MODE_COPY[status.settings.autoReplyMode] ?? AUTO_REPLY_MODE_COPY.off
+  const replyPolicy =
+    AUTO_REPLY_MODE_COPY[status.settings.autoReplyMode] ?? AUTO_REPLY_MODE_COPY.off
   const needsAttention = total === 0 || connected < total
 
   return (
@@ -175,9 +188,7 @@ function ConnectionSummary() {
           ? 'No numbers connected'
           : `${connected} of ${total} numbers reported connected`}
       </span>
-      <span className="mt-1 block text-xs text-ink-soft">
-        AI replies {replyPolicy.short}
-      </span>
+      <span className="mt-1 block text-xs text-ink-soft">AI replies {replyPolicy.short}</span>
     </Link>
   )
 }
@@ -199,7 +210,14 @@ function SignOutButton() {
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={signOut} pending={pending} pendingLabel="Signing out…" className="w-full justify-start">
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={signOut}
+      pending={pending}
+      pendingLabel="Signing out…"
+      className="w-full justify-start"
+    >
       <SignOutIcon size={15} />
       Sign out
     </Button>
@@ -208,7 +226,7 @@ function SignOutButton() {
 
 function Brand() {
   return (
-    <Link href="/dashboard" className="flex items-center gap-2.5 rounded-md">
+    <Link href="/inbox" className="flex items-center gap-2.5 rounded-md">
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-action">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="white" aria-hidden="true">
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
@@ -221,6 +239,7 @@ function Brand() {
 
 function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+
   // The drawer records which route it was opened on, so navigating anywhere
   // closes it by definition — no effect, and no chance of it being left over
   // the page after a route change.
@@ -283,7 +302,11 @@ function Shell({ children }: { children: ReactNode }) {
       </Drawer>
 
       <main id="main" className="min-w-0 md:pl-[var(--nav-width)]">
-        {children}
+        <SettingsNavigation />
+        <HelpNavigation />
+        <ChannelSettingsFrame>
+          <TechnicalSettingsFrame>{children}</TechnicalSettingsFrame>
+        </ChannelSettingsFrame>
       </main>
     </div>
   )

@@ -9,7 +9,9 @@ import {
   Banner,
   Button,
   ChannelTag,
-  ChevronRight,
+  Drawer,
+  Select,
+  Switch,
   EmptyState,
   ErrorState,
   HttpError,
@@ -37,10 +39,10 @@ import { Composer, Transcript, type TranscriptMessage } from '@/components/trans
 import { resolveFallbackBot, useWorkspaceStatus } from '@/components/workspace-status'
 
 const POLL_MS = 5000
-/** The list endpoint has no cursor, so every count on this page says "recent". */
-const LIST_LIMIT = 100
+/** Server filtering and totals cover every matching conversation. */
+const LIST_LIMIT = 25
 
-type StatusFilter = 'open' | 'resolved' | 'all'
+type StatusFilter = 'attention' | 'open' | 'resolved' | 'all'
 type ModeFilter = 'all' | 'auto' | 'human'
 
 interface ConversationSummary {
@@ -56,11 +58,20 @@ interface ConversationSummary {
   status: 'open' | 'resolved'
   lastMessageAt: string | null
   lastMessagePreview: string | null
+  attentionReason: string | null
+  waitingSince: string | null
+  replyVersion: number
 }
 
 interface ConversationDetail {
   conversation: ConversationSummary
-  contact: { id: string; name: string | null; phoneNumber: string } | null
+  contact: {
+    id: string
+    name: string | null
+    phoneNumber: string
+    aiEnabled: boolean
+    aiBotId: string | null
+  } | null
   waSessionName: string | null
   messages: TranscriptMessage[]
 }
@@ -86,9 +97,7 @@ function ConversationRow({
         aria-current={active ? 'true' : undefined}
         className={`w-full cursor-pointer border-l-2 px-4 py-3 text-left transition-colors
           duration-[--duration-control] ${
-            active
-              ? 'border-action bg-selected'
-              : 'border-transparent hover:bg-hover'
+            active ? 'border-action bg-selected' : 'border-transparent hover:bg-hover'
           }`}
       >
         <span className="flex items-baseline justify-between gap-2">
@@ -115,6 +124,12 @@ function ConversationRow({
           )}
         </span>
 
+        {conversation.attentionReason && (
+          <span className="mt-1 block text-xs font-medium text-warning">
+            {conversation.attentionReason}
+            {conversation.waitingSince ? ` · ${timeAgo(conversation.waitingSince)}` : ''}
+          </span>
+        )}
         <span className="mt-2 flex flex-wrap items-center gap-1.5">
           <ModeBadge mode={conversation.mode} />
           {conversation.status === 'resolved' && <LifecycleBadge status="resolved" />}
@@ -151,29 +166,46 @@ function Thread({
   // anyone opened the thread — is not pushed off the screen. From md up they
   // are always visible and this state is ignored.
   const [controlsOpen, setControlsOpen] = useState(false)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
 
   const load = useCallback(
-    (signal: AbortSignal) => request<ConversationDetail>(`/api/conversations/${conversationId}`, { signal }),
-    [conversationId]
+    (signal: AbortSignal) =>
+      request<ConversationDetail>(`/api/conversations/${conversationId}`, { signal }),
+    [conversationId],
   )
   const { data, loading, error, stale, refresh } = useAsyncData(load, [load], {
     pollMs: POLL_MS,
   })
 
+  const followMessages = useRef(true)
+  const lastMessageId = data?.messages.at(-1)?.id
   const messageCount = data?.messages.length ?? 0
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [messageCount, conversationId])
+    if (followMessages.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
+  }, [messageCount, lastMessageId, conversationId])
 
-  async function patch(body: Record<string, unknown>, action: 'mode' | 'status' | 'bot', success: string) {
+  async function patch(
+    body: Record<string, unknown>,
+    action: 'mode' | 'status' | 'bot',
+    success: string,
+  ) {
     setPendingAction(action)
     try {
-      await request(`/api/conversations/${conversationId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      toast(success)
+      const result = await request<{ sendInProgress?: boolean }>(
+        `/api/conversations/${conversationId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...body, expectedVersion: data?.conversation.replyVersion }),
+        },
+      )
+      toast(
+        result.sendInProgress
+          ? `${success} An AI message was already sending; check the transcript.`
+          : success,
+      )
+      if (action === 'mode' && body.mode === 'human')
+        requestAnimationFrame(() => composerRef.current?.focus())
       refresh()
       onChanged()
     } catch (e) {
@@ -192,8 +224,9 @@ function Thread({
       await request(`/api/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, expectedVersion: data?.conversation.replyVersion }),
       })
+      followMessages.current = true
       onDraftChange('')
       refresh()
       onChanged()
@@ -204,7 +237,7 @@ function Thread({
       setSendError(
         e instanceof HttpError && e.status === 502
           ? `${message} The message may still have reached WhatsApp — check the conversation before sending again.`
-          : message
+          : message,
       )
     } finally {
       setSending(false)
@@ -236,16 +269,19 @@ function Thread({
   const { conversation, contact } = data
   const isAuto = conversation.mode === 'auto'
   const fallback = resolveFallbackBot(workspace)
-  const boundBot = conversation.botId
-    ? (workspace?.bots.find((b) => b.id === conversation.botId) ?? null)
-    : null
-  const effectiveBot = boundBot ?? fallback.bot
+  const effectiveBot =
+    [conversation.botId]
+      .map((id) => workspace?.bots.find((b) => b.id === id && b.enabled))
+      .find(Boolean) ?? fallback.bot
+  const boundBot = effectiveBot && effectiveBot.id === conversation.botId ? effectiveBot : null
+
   const channel = workspace?.channels.find((c) => c.id === conversation.waSessionId) ?? null
 
   const blockers = deriveBlockers({
     autoReplyMode: workspace?.settings.autoReplyMode ?? 'off',
     mode: conversation.mode,
-    channelStatus: (channel?.status ?? (conversation.waSessionId ? 'unknown' : null)) as ChannelStatus | null,
+    channelStatus: (channel?.status ??
+      (conversation.waSessionId ? 'unknown' : null)) as ChannelStatus | null,
     botName: effectiveBot?.name ?? null,
     botEnabled: effectiveBot?.enabled,
     botProviderMissing: effectiveBot ? !effectiveBot.providerId : false,
@@ -256,7 +292,12 @@ function Thread({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b border-line bg-panel px-3 py-3 md:px-4">
         <div className="flex items-start gap-2">
-          <IconButton label="Back to conversations" size="sm" onClick={onBack} className="lg:hidden">
+          <IconButton
+            label="Back to conversations"
+            size="sm"
+            onClick={onBack}
+            className="lg:hidden"
+          >
             <ArrowLeft size={16} />
           </IconButton>
 
@@ -283,11 +324,11 @@ function Thread({
                   'status',
                   conversation.status === 'resolved'
                     ? 'Conversation reopened.'
-                    : 'Conversation resolved. Your draft is still here.'
+                    : 'Conversation marked as done. Your draft is still here.',
                 )
               }
             >
-              {conversation.status === 'resolved' ? 'Reopen' : 'Resolve'}
+              {conversation.status === 'resolved' ? 'Reopen' : 'Mark as done'}
             </Button>
           </div>
         </div>
@@ -314,75 +355,92 @@ function Thread({
           blockers={blockers}
         />
 
-        <button
-          type="button"
-          onClick={() => setControlsOpen((v) => !v)}
-          aria-expanded={controlsOpen}
-          className="mt-3 flex cursor-pointer items-center gap-1.5 rounded-sm text-[13px] font-medium text-ink-muted hover:text-ink md:hidden"
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            variant={isAuto ? 'primary' : 'secondary'}
+            pending={pendingAction === 'mode'}
+            pendingLabel="Saving…"
+            onClick={() =>
+              patch(
+                { mode: isAuto ? 'human' : 'auto' },
+                'mode',
+                isAuto
+                  ? 'Your team is replying. AI replies are paused for this conversation.'
+                  : 'AI replies are on for this conversation.',
+              )
+            }
+            disabled={
+              !isAuto &&
+              (workspace?.settings.autoReplyMode === 'off' || conversation.status === 'resolved')
+            }
+          >
+            {isAuto ? 'Take over' : 'Let AI reply'}
+          </Button>
+          <Button variant="ghost" onClick={() => setControlsOpen(true)}>
+            Customer details
+          </Button>
+        </div>
+        <p className="mt-2 text-xs leading-4 text-ink-muted">
+          {isAuto
+            ? 'Take over to reply yourself. This does not change this customer’s future conversations.'
+            : 'Your team is replying. Hand back to AI to answer any waiting message, or wait for the next enquiry.'}
+        </p>
+        <Drawer
+          open={controlsOpen}
+          onClose={() => setControlsOpen(false)}
+          title="Customer details"
+          description={contact?.phoneNumber}
         >
-          <ChevronRight
-            size={13}
-            className={`transition-transform duration-[--duration-control] ${controlsOpen ? 'rotate-90' : ''}`}
-          />
-          Who replies, and which bot
-        </button>
-
-        <div className={`${controlsOpen ? 'block' : 'hidden'} md:block`}>
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              pending={pendingAction === 'mode'}
-              pendingLabel="Saving…"
-              onClick={() =>
-                patch(
-                  { mode: isAuto ? 'human' : 'auto' },
-                  'mode',
-                  isAuto
-                    ? 'You are handling this conversation. New messages from this customer will wait for you.'
-                    : 'The AI will answer new messages from this customer.'
-                )
+          <div className="space-y-5">
+            <Select
+              label="Agent for this conversation"
+              value={conversation.botId ?? ''}
+              disabled={pendingAction !== null}
+              onChange={(e) =>
+                patch({ botId: e.target.value }, 'bot', 'Agent updated for this conversation.')
               }
             >
-              {isAuto ? 'Use human replies' : 'Use AI replies'}
-            </Button>
-
-            <label className="flex items-center gap-2 text-sm">
-              <span className="text-ink-soft">Bot</span>
-              <select
-                value={conversation.botId ?? ''}
-                disabled={pendingAction === 'bot'}
-                onChange={(e) => patch({ botId: e.target.value }, 'bot', 'Bot updated for this conversation.')}
-                className="h-9 max-w-[13rem] cursor-pointer rounded-md border border-[var(--input-border)]/70
-                  bg-inset px-2 text-sm text-ink disabled:opacity-60"
-                aria-label="Bot for this conversation"
-              >
-                <option value="">Use the workspace default</option>
-                {(workspace?.bots ?? []).map((bot) => (
-                  <option key={bot.id} value={bot.id} disabled={!bot.enabled}>
-                    {bot.name}
-                    {bot.enabled ? '' : ' (turned off)'}
-                  </option>
-                ))}
-              </select>
-            </label>
-
+              <option value="">Use the customer’s default agent</option>
+              {(workspace?.bots ?? []).map((bot) => (
+                <option key={bot.id} value={bot.id} disabled={!bot.enabled}>
+                  {bot.name}
+                  {!bot.enabled ? ' (turned off)' : ''}
+                </option>
+              ))}
+            </Select>
+            <div className="flex items-start gap-3">
+              <Switch
+                checked={contact?.aiEnabled ?? false}
+                label="Use AI for this customer’s new conversations"
+                onChange={async (aiEnabled) => {
+                  try {
+                    await request(`/api/contacts/${conversation.contactId}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ aiEnabled }),
+                    })
+                    toast('Preference saved for new conversations.')
+                    refresh()
+                  } catch (error) {
+                    toast(errorMessage(error, 'Could not save preference.'), 'error')
+                  }
+                }}
+              />
+              <p className="text-sm">
+                Use AI for this customer’s new conversations
+                <span className="mt-1 block text-xs text-ink-muted">
+                  Subject to Automatic replies settings. This conversation is unchanged.
+                </span>
+              </p>
+            </div>
             <Link
               href={`/contacts?contact=${conversation.contactId}`}
-              className="text-[13px] font-medium text-action hover:underline"
+              className="text-sm font-medium text-action underline"
             >
-              Contact details
+              View contact profile and history
             </Link>
           </div>
-
-          {/* The API mirrors both of these onto the contact, which decides what
-              the customer's *next* conversation looks like. Saying so is the
-              difference between a setting and a surprise. */}
-          <p className="mt-2 text-xs leading-4 text-ink-soft">
-            Changing the reply mode or bot here also becomes this customer’s default for future
-            conversations.
-          </p>
-        </div>
+        </Drawer>
       </div>
 
       {stale && (
@@ -391,22 +449,31 @@ function Thread({
         </div>
       )}
 
-      <Transcript messages={data.messages} scrollRef={scrollRef} />
+      <Transcript
+        messages={data.messages}
+        scrollRef={scrollRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          followMessages.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+        }}
+      />
 
       <Composer
         value={draft}
         onChange={onDraftChange}
         onSend={send}
         sending={sending}
+        inputRef={composerRef}
+        sendLabel={isAuto ? 'Take over and send' : 'Send'}
+        disabled={pendingAction !== null}
         notice={
           sendError ? (
-            <Banner tone="danger" title="Message not sent">
+            <Banner tone="danger" title="Send needs checking">
               {sendError} Your text is still in the box below.
             </Banner>
           ) : isAuto ? (
             <p className="rounded-md bg-info-bg px-2.5 py-1.5 text-xs leading-4 text-info">
-              The AI is answering this conversation. Anything you send goes out as written — switch
-              to human replies if you want to take over completely.
+              Sending your reply takes over this conversation and pauses AI replies.
             </p>
           ) : null
         }
@@ -420,9 +487,10 @@ function Thread({
 function InboxWorkspace() {
   const router = useRouter()
   const params = useSearchParams()
+  const { status: workspace } = useWorkspaceStatus()
 
   const selectedId = params.get('c')
-  const statusFilter = (params.get('status') as StatusFilter) ?? 'open'
+  const statusFilter = (params.get('status') as StatusFilter) ?? 'attention'
   const modeFilter = (params.get('mode') as ModeFilter) ?? 'all'
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -446,15 +514,28 @@ function InboxWorkspace() {
 
   const query = useMemo(() => {
     const q = new URLSearchParams()
-    if (statusFilter !== 'all') q.set('status', statusFilter)
+    q.set('view', 'queue')
+    q.set('page', params.get('page') ?? '1')
+    if (statusFilter === 'attention') {
+      q.set('attention', 'true')
+      q.set('status', 'open')
+    } else if (statusFilter !== 'all') q.set('status', statusFilter)
+    if (modeFilter !== 'all') q.set('mode', modeFilter)
     if (debounced) q.set('search', debounced)
     q.set('limit', String(LIST_LIMIT))
     return q.toString()
-  }, [statusFilter, debounced])
+  }, [statusFilter, debounced, modeFilter, params])
 
   const load = useCallback(
-    (signal: AbortSignal) => request<ConversationSummary[]>(`/api/conversations?${query}`, { signal }),
-    [query]
+    (signal: AbortSignal) =>
+      request<{
+        rows: ConversationSummary[]
+        total: number
+        page: number
+        lastPage: number
+        counts: { attention: number; open: number; done: number }
+      }>(`/api/conversations?${query}`, { signal }),
+    [query],
   )
   const list = useAsyncData(load, [load], { pollMs: POLL_MS })
 
@@ -466,25 +547,27 @@ function InboxWorkspace() {
   }
 
   const conversations = useMemo(() => {
-    const rows = list.data ?? []
+    const rows = list.data?.rows ?? []
     return modeFilter === 'all' ? rows : rows.filter((c) => c.mode === modeFilter)
   }, [list.data, modeFilter])
 
   // Selection is independent of the filters: a conversation you are reading
   // does not disappear because you resolved it or narrowed the list.
   const selectedInList = selectedId ? conversations.some((c) => c.id === selectedId) : false
-  const filtersActive = statusFilter !== 'open' || modeFilter !== 'all' || debounced !== ''
+  const filtersActive = statusFilter !== 'attention' || modeFilter !== 'all' || debounced !== ''
 
   return (
     <div className="flex h-[calc(100dvh-var(--topbar-height))] flex-col md:h-dvh">
-      <div className={`shrink-0 px-4 pt-4 pb-3 md:px-6 md:pt-6 ${selectedId ? 'hidden lg:block' : ''}`}>
+      <div
+        className={`shrink-0 px-4 pt-4 pb-3 md:px-6 md:pt-6 ${selectedId ? 'hidden lg:block' : ''}`}
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl leading-8 font-semibold tracking-[-0.02em] text-ink md:text-title">
               Inbox
             </h1>
             <p className="mt-1 text-sm text-ink-muted">
-              Every conversation, whether the AI or you are answering it.
+              See which customers need your team and take over when needed.
             </p>
           </div>
         </div>
@@ -509,11 +592,19 @@ function InboxWorkspace() {
                 <SegmentedControl
                   label="Conversation status"
                   value={statusFilter}
-                  onChange={(v) => setParam('status', v === 'open' ? null : v)}
+                  onChange={(v) => {
+                    const next = new URLSearchParams(params.toString())
+                    next.set('status', v)
+                    next.delete('page')
+                    router.replace(`/inbox?${next}`, { scroll: false })
+                  }}
                   options={[
-                    { value: 'open', label: 'Open' },
-                    { value: 'resolved', label: 'Resolved' },
-                    { value: 'all', label: 'All' },
+                    {
+                      value: 'attention',
+                      label: `Needs attention ${list.data?.counts.attention ?? ''}`,
+                    },
+                    { value: 'open', label: 'All open' },
+                    { value: 'resolved', label: 'Done' },
                   ]}
                 />
                 <SegmentedControl
@@ -521,9 +612,9 @@ function InboxWorkspace() {
                   value={modeFilter}
                   onChange={(v) => setParam('mode', v === 'all' ? null : v)}
                   options={[
-                    { value: 'all', label: 'Anyone' },
+                    { value: 'all', label: 'Everyone' },
                     { value: 'auto', label: 'AI' },
-                    { value: 'human', label: 'Human' },
+                    { value: 'human', label: 'Your team' },
                   ]}
                 />
               </div>
@@ -547,27 +638,44 @@ function InboxWorkspace() {
               ) : conversations.length === 0 ? (
                 <EmptyState
                   title={
-                    debounced
-                      ? 'No matching conversations'
-                      : statusFilter === 'open'
-                        ? 'No open conversations'
-                        : 'No conversations here'
+                    list.data?.counts.open === 0 && list.data?.counts.done === 0 && !debounced
+                      ? 'No customer messages yet'
+                      : statusFilter === 'attention' &&
+                          !debounced &&
+                          list.data?.counts.attention === 0
+                        ? 'No conversations need your team right now'
+                        : debounced
+                          ? 'No matching conversations'
+                          : statusFilter === 'open'
+                            ? 'No open conversations'
+                            : 'No conversations here'
                   }
                   description={
                     debounced
                       ? 'Try another name or number, or clear your filters.'
                       : statusFilter === 'open'
-                        ? 'Resolved conversations are still available.'
+                        ? 'Done conversations are still available.'
                         : 'Incoming messages start a conversation automatically.'
                   }
                   action={
-                    filtersActive ? (
+                    list.data?.counts.open === 0 &&
+                    list.data?.counts.done === 0 &&
+                    workspace?.channels.length === 0 ? (
+                      <Link
+                        href="/channels/whatsapp"
+                        className="text-sm font-semibold text-action underline"
+                      >
+                        Connect your WhatsApp number
+                      </Link>
+                    ) : filtersActive ? (
                       <Button
                         variant="secondary"
                         size="sm"
                         onClick={() => {
                           setSearch('')
-                          router.replace(selectedId ? `/inbox?c=${selectedId}` : '/inbox', { scroll: false })
+                          router.replace(selectedId ? `/inbox?c=${selectedId}` : '/inbox', {
+                            scroll: false,
+                          })
                         }}
                       >
                         Clear filters
@@ -589,10 +697,27 @@ function InboxWorkspace() {
                     ))}
                   </ul>
                   <p className="px-4 py-3 text-xs text-ink-soft">
-                    {conversations.length === LIST_LIMIT
-                      ? `Showing the ${LIST_LIMIT} most recent conversations.`
-                      : `${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'} shown.`}
+                    {list.data?.total ?? 0} matching conversations · Page {list.data?.page ?? 1} of{' '}
+                    {list.data?.lastPage ?? 1}
                   </p>
+                  <div className="flex justify-between gap-2 px-3 pb-3">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!list.data || list.data.page <= 1}
+                      onClick={() => setParam('page', String((list.data?.page ?? 1) - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!list.data || list.data.page >= list.data.lastPage}
+                      onClick={() => setParam('page', String((list.data?.page ?? 1) + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </>
               )}
             </div>
@@ -635,7 +760,13 @@ function InboxWorkspace() {
 
 export default function InboxPage() {
   return (
-    <Suspense fallback={<div className="p-6"><Skeleton className="h-96 w-full" /></div>}>
+    <Suspense
+      fallback={
+        <div className="p-6">
+          <Skeleton className="h-96 w-full" />
+        </div>
+      }
+    >
       <InboxWorkspace />
     </Suspense>
   )

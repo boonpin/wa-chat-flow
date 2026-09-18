@@ -313,12 +313,12 @@ export function ProviderForm({ provider }: { provider: ProviderRecord | null }) 
         </Capability>
       </FormSection>
 
-      <FormSection title="Availability" scope="Whether bots may answer through this account.">
+      <FormSection title="Availability" scope="Whether assistants may answer through this account.">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-sm font-medium text-ink">Provider is available</p>
             <p className="mt-0.5 text-sm text-ink-muted">
-              A provider that is turned off makes every bot on it fail rather than fall back to
+              A provider that is turned off makes every assistant on it fail rather than fall back to
               another account.
             </p>
           </div>
@@ -430,7 +430,7 @@ function Capability({
         children
       ) : (
         <p className="text-xs text-ink-soft">
-          Customers who send {noun} are told the bot cannot read them, and offered a person instead.
+          Customers who send {noun} are told the assistant cannot read them, and offered a person instead.
         </p>
       )}
     </div>

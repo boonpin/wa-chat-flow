@@ -3,7 +3,8 @@ import { getSession } from '@/lib/auth/session'
 import { db } from '@/lib/db'
 import { messages, contacts } from '@/lib/db/schema'
 import { count, eq, desc } from 'drizzle-orm'
-import { getOrCreateOpenConversation } from '@/lib/conversation/service'
+import { getOrCreateOpenConversation, updateConversation, recordConversationEvent } from '@/lib/conversation/service'
+import { cancelAutoReply } from '@/lib/messaging/reply-scheduler'
 import { sendOutgoingMessage } from '@/lib/messaging/outgoing'
 import { usageByMessage } from '@/lib/ai/usage'
 
@@ -117,6 +118,8 @@ export async function POST(req: Request) {
     )
   }
 
+  if (conversation.mode !== 'human') { updateConversation(conversation.id, { mode: 'human' }); recordConversationEvent(conversation.id, 'mode_changed', 'Your team took over and sent a reply') }
+  cancelAutoReply(conversation.id)
   const result = await sendOutgoingMessage({
     conversationId: conversation.id,
     contactId: contact.id,

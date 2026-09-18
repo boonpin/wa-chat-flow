@@ -18,7 +18,7 @@ function SignInForm() {
   // Only a same-origin path is ever restored, so the parameter cannot be used
   // to bounce someone to another site after they authenticate.
   const raw = params.get('next')
-  const next = raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/dashboard'
+  const next = raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

@@ -1,14 +1,16 @@
 import { db } from '@/lib/db'
-import { contacts as contactsTable, messages, systemSettings } from '@/lib/db/schema'
+import { contacts as contactsTable, messages, systemSettings, conversations } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { findOrCreateContact, type Contact } from '@/lib/contacts/service'
 import {
   getConversation,
+  recordConversationEvent,
   getOrCreateOpenConversation,
   touchConversation,
   type Conversation,
 } from '@/lib/conversation/service'
+import { getAiProvider } from '@/lib/ai/connection'
 import { buildContext } from '@/lib/ai/context'
 import { describePendingMedia, hasPendingMedia } from '@/lib/ai/media'
 import { resolveHandler } from '@/lib/ai/handler'
@@ -81,8 +83,8 @@ export function persistIncomingMessage(incoming: IncomingMessage): PersistResult
     .where(
       and(
         eq(messages.provider, incoming.provider),
-        eq(messages.providerMessageId, incoming.providerMessageId)
-      )
+        eq(messages.providerMessageId, incoming.providerMessageId),
+      ),
     )
     .get()
 
@@ -145,7 +147,7 @@ export function persistIncomingMessage(incoming: IncomingMessage): PersistResult
   touchConversation(conversation.id, receivedAt)
 
   console.log(
-    `[wa] [IN] ${contact.name || contact.phoneNumber}: ${incoming.text ?? `<${incoming.type}>`}`
+    `[wa] [IN] ${contact.name || contact.phoneNumber}: ${incoming.text ?? `<${incoming.type}>`}`,
   )
 
   return { status: 'stored', incoming, contact, conversation, openedConversation, storedMessageId }
@@ -169,6 +171,7 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
 
   // ─── 5. Should the AI answer at all? ────────────────────────────────────────
   if (!repliesToExisting(autoReplyMode)) return { status: 'skipped', reason: 'auto_reply_disabled' }
+  if (conversation.status !== 'open') return { status: 'skipped', reason: 'gone' }
   if (conversation.mode !== 'auto') return { status: 'skipped', reason: 'human_mode' }
 
   // ─── 6. What is actually unanswered ─────────────────────────────────────────
@@ -184,13 +187,7 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
   let context = buildContext(conversation.id)
   if (context.pendingRows.length === 0) return { status: 'skipped', reason: 'already_answered' }
 
-  // Nothing said before the burst means the thread opens with it. Under
-  // `existing` that is a new conversation, which this policy does not answer —
-  // a second guard behind the mode written at creation, for a policy that
-  // tightened while the window was open.
-  if (context.history.length === 0 && !repliesToNew(autoReplyMode)) {
-    return { status: 'skipped', reason: 'new_conversation' }
-  }
+  // New threads inherit human mode under `existing`. Explicit handback may enable them.
 
   const contact = db
     .select()
@@ -205,7 +202,6 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
   // ─── 7. Bot ─────────────────────────────────────────────────────────────────
   const bot = selectBot({
     conversationBotId: conversation.botId,
-    contactBotId: contact.aiBotId,
     settingsDefaultBotId: settings?.defaultBotId,
   })
   if (!bot) return { status: 'skipped', reason: 'no_bot' }
@@ -216,8 +212,32 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
   // the reply can throw part-way through, and those tokens still belong to the
   // failure row written in the catch.
   const usageIds: string[] = []
+  const canContinue = () => {
+    const latest = getConversation(conversationId)
+    const policy = db.select().from(systemSettings).get()
+    const latestBot = selectBot({
+      conversationBotId: latest?.botId,
+      settingsDefaultBotId: policy?.defaultBotId,
+    })
+    return (
+      !!latest &&
+      latest.mode === 'auto' &&
+      latest.status === 'open' &&
+      latest.replyVersion === conversation.replyVersion &&
+      policy?.autoReplyMode !== 'off' &&
+      policy?.replyVersion === settings?.replyVersion &&
+      latestBot?.id === bot.id &&
+      latestBot.updatedAt === bot.updatedAt &&
+      !!(bot.providerId && getAiProvider(bot.providerId)?.enabled)
+    )
+  }
 
   try {
+    db.update(conversations)
+      .set({ aiReplyStartedAt: new Date().toISOString() })
+      .where(eq(conversations.id, conversationId))
+      .run()
+    recordConversationEvent(conversationId, 'ai_started', 'AI started preparing a reply')
     // The indicator goes up before the media pass, not after it: reading a photo
     // is the slowest thing that happens here, and it is the stretch during which
     // the customer most needs to see that something is happening.
@@ -256,6 +276,7 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
       conversationId: conversation.id,
       contactId: contact.id,
       tools: resolveTools(bot.id),
+      canContinue,
       usageSink: usageIds,
     })
 
@@ -265,6 +286,14 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
       recordToolRun(conversation.id, contact.id, provider.name, run)
     }
 
+    if (!canContinue()) {
+      recordConversationEvent(
+        conversationId,
+        'ai_suppressed',
+        'Prepared AI reply was stopped because reply responsibility or settings changed',
+      )
+      return { status: 'skipped', reason: 'human_mode' }
+    }
     const reply = output.text.trim()
     if (!reply) return { status: 'skipped', reason: 'empty_reply' }
 
@@ -290,7 +319,7 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
         ? ` [${output.usage.inputTokens} in / ${output.usage.outputTokens} out]`
         : ''
       console.log(
-        `[wa] [AI] ${contact.name || contact.phoneNumber}${answered > 1 ? ` (${answered} messages)` : ''}${tokens}: ${reply}`
+        `[wa] [AI] ${contact.name || contact.phoneNumber}${answered > 1 ? ` (${answered} messages)` : ''}${tokens}: ${reply}`,
       )
     }
 
@@ -298,6 +327,14 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
       ? { status: 'replied', messageId: sent.messageId }
       : { status: 'failed', error: sent.error ?? 'Send failed' }
   } catch (err) {
+    if (!canContinue()) {
+      recordConversationEvent(
+        conversationId,
+        'ai_suppressed',
+        'AI processing ended after reply responsibility changed',
+      )
+      return { status: 'skipped', reason: 'human_mode' }
+    }
     const error = err instanceof Error ? err.message : String(err)
     console.error('[wa] AI reply error:', err)
     // Rounds that completed before the failure were still billed, so they are
@@ -306,6 +343,10 @@ export async function runAutoReply(conversationId: string): Promise<AutoReplyOut
     attachUsageToMessage(usageIds, failureId)
     return { status: 'failed', error }
   } finally {
+    db.update(conversations)
+      .set({ aiReplyStartedAt: null })
+      .where(eq(conversations.id, conversationId))
+      .run()
     // The indicator outlives a crashed reply otherwise, leaving the customer
     // watching a bot that is never going to finish its sentence.
     await provider
@@ -330,7 +371,7 @@ function recordToolRun(
   conversationId: string,
   contactId: string,
   provider: string,
-  run: ToolRun
+  run: ToolRun,
 ): void {
   const error = run.result.ok ? run.result.syncError : run.result.error
 
@@ -361,7 +402,7 @@ function recordAiFailure(
   conversationId: string,
   contactId: string,
   provider: string,
-  error: string
+  error: string,
 ): string {
   const id = uuidv4()
 

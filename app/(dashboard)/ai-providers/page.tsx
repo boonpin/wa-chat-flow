@@ -35,7 +35,7 @@ export default function AiProvidersPage() {
   return (
     <PageBody width="content">
       <PageHeader
-        title="AI providers"
+        title="AI connection"
         description="An account the AI answers through: the vendor, the key that pays for it, and the model to run."
         actions={
           <LinkButton href="/ai-providers/new" variant="primary">
@@ -57,14 +57,14 @@ export default function AiProvidersPage() {
           <SkeletonRows rows={3} />
         ) : error ? (
           <ErrorState
-            title="Could not load your AI providers"
+            title="Could not load your AI connection"
             detail="Nothing has been changed. Try again."
             onRetry={refresh}
           />
         ) : providers.length === 0 ? (
           <EmptyState
             icon={<KeyIcon size={22} />}
-            title="Add the AI account your bots answer through"
+            title="Add the AI account your assistants answer through"
             description="Choose a vendor, paste its API key, and pick a model from what that key can reach."
             action={
               <LinkButton href="/ai-providers/new" variant="primary" size="sm">
@@ -92,7 +92,7 @@ export default function AiProvidersPage() {
                       {provider.model} ·{' '}
                       {provider.hasApiKey ? 'own API key stored' : 'using the server key'} ·{' '}
                       {provider.botCount === 0
-                        ? 'no bots yet'
+                        ? "no assistants yet"
                         : `${provider.botCount} bot${provider.botCount === 1 ? '' : 's'}`}
                     </span>
                     <span className="mt-1 block text-sm text-ink-soft">

@@ -251,7 +251,7 @@ export default function WhatsAppChannelsPage() {
   return (
     <PageBody width="content">
       <PageHeader
-        title="WhatsApp channels"
+        title="WhatsApp numbers"
         description="Connect the WhatsApp numbers your business uses. A channel here is one connected number — it is not WhatsApp’s broadcast Channels feature."
         actions={
           <Button onClick={() => setConnecting('new')}>
@@ -321,7 +321,7 @@ export default function WhatsAppChannelsPage() {
           one. Nothing here claims replies are working. */}
       <Banner tone="info" title="Connecting a number is not the same as replying automatically">
         A connected number receives messages. Whether the AI answers them also depends on your reply
-        settings, each conversation’s mode and an available bot.
+        settings, each conversation’s mode and an available assistant.
       </Banner>
 
       <div className="mt-5 space-y-2 text-sm leading-5 text-ink-muted">

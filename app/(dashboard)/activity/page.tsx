@@ -1,509 +1,406 @@
 'use client'
-
+import { Suspense, useCallback, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { useCallback, useState } from 'react'
 import {
-  ActivityIcon,
   Badge,
-  Banner,
   Button,
+  CaptureStatusBadge,
   Disclosure,
   Drawer,
   EmptyState,
   ErrorState,
+  Input,
   KeyValues,
+  LinkButton,
   MessageStatusBadge,
   PageBody,
   PageHeader,
-  Pagination,
   Panel,
-  RefreshIcon,
+  SearchInput,
+  Select,
   SkeletonRows,
   StaleNotice,
-  Table,
-  TableScroll,
-  Td,
-  Th,
   contactLabel,
   fullTimestamp,
-  request,
   timeAgo,
-  tokenCount,
+  request,
   useAsyncData,
-  type BadgeVariant,
 } from '@/components/ui'
 import { CaptureDetail, type Invocation } from '@/components/capture-detail'
-
-/** Tokens one reply cost. Null on every row that never called a model. */
-interface MessageUsage {
-  calls: number
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-}
-
-interface UsageCall {
+import type { ActivityEvent } from '@/lib/conversation/activity'
+interface ContactGroup {
   id: string
-  round: number
-  model: string
-  inputTokens: number
-  outputTokens: number
-  latencyMs: number | null
-  status: string
-  error: string | null
-}
-
-interface EventRow {
-  id: string
-  direction: 'incoming' | 'outgoing'
-  senderType: 'customer' | 'ai' | 'human' | 'system'
-  messageType: string
-  message: string
-  status: string
-  error: string | null
-  /** What a model made of an attachment, and how that went. Null for text. */
-  mediaSummary: string | null
-  mediaStatus: string | null
-  createdAt: string
-  contactId: string
   contactName: string | null
   contactPhone: string | null
-  usage: MessageUsage | null
+  createdAt: string
+  events: number
+  failures: number
+  conversations: number
+  numbers: string[]
+  hasUsage: boolean
+  costMicros: number | null
 }
-
-/** Why an attachment has no description, in words an operator can act on. */
-const MEDIA_STATUS_TEXT: Record<string, string> = {
-  pending: 'Not read yet.',
-  skipped: 'Not read — more attachments arrived at once than the bot reads in one go.',
-  too_large: 'Not read — the file was too large.',
-  unsupported:
-    'Not read — the AI provider behind this bot is not set up to read this kind of attachment.',
-  failed: 'Could not be read. The error is shown above.',
+interface ActivityData {
+  view: string
+  rows: (ContactGroup | ActivityEvent)[]
+  total: number
+  nextCursor: string | null
+  period: { from: string; to: string }
+  conversations?: { id: string; sessionName: string | null }[]
+  currency?: string
 }
-
-interface EventDetail extends EventRow {
-  usage: (MessageUsage & { providerName: string | null }) | null
-  usageCalls: UsageCall[]
-  conversationId: string
-  provider: string
-  mediaMime: string | null
-  providerMessageId: string | null
-  toolInvocationId: string | null
-  conversationMode: string | null
-  conversationStatus: string | null
-  invocation: Invocation | null
+const KINDS: Record<string, string> = {
+  customer: 'Customer message',
+  ai: 'AI reply',
+  team: 'Team reply',
+  capture: 'Saved customer details',
+  usage: 'AI usage',
+  preview_usage: 'Question preview usage',
+  capture_retry: 'Google Sheets retry',
+  ai_started: 'AI preparing a reply',
+  ai_suppressed: 'AI reply stopped',
+  mode_changed: 'Reply responsibility',
+  status_changed: 'Conversation status',
+  system: 'System event',
 }
-
-/** Who or what produced the row. "System" covers events, not people. */
-const SENDER: Record<EventRow['senderType'], { label: string; variant: BadgeVariant }> = {
-  customer: { label: 'Customer', variant: 'neutral' },
-  ai: { label: 'AI', variant: 'ai' },
-  human: { label: 'You', variant: 'human' },
-  system: { label: 'System', variant: 'neutral' },
-}
-
-function describeEvent(row: EventRow): string {
-  if (row.messageType === 'tool') {
-    const tool = row.message.replace(/^Ran tool:\s*/, '')
-    return row.status === 'failed'
-      ? `Captured details with ${tool} — sheet sync failed`
-      : `Captured details with ${tool} and synced them`
-  }
-  if (row.senderType === 'system') return row.error ?? 'System event'
-  if (row.message) return row.message
-  // An attachment's own description is the closest thing it has to a body, and
-  // "image attachment" told an operator scanning the list nothing at all.
-  if (row.mediaStatus === 'described' && row.mediaSummary) return row.mediaSummary
-  return row.messageType === 'text' ? 'No text content' : `${row.messageType} attachment`
-}
-
-/**
- * Tokens for one row.
- *
- * A dash, not a zero, for everything that never called a model: a customer
- * message, a human reply and a tool audit row all cost nothing because nothing
- * was asked of the AI, and printing "0" would read as a model that answered for
- * free. A reply that took several rounds says so, since that is where a
- * surprising number usually comes from.
- */
-function TokenCell({ usage }: { usage: MessageUsage | null }) {
-  if (!usage) return <span className="text-ink-soft">—</span>
-
-  return (
-    <span className="block text-xs tabular-nums text-ink">
-      {tokenCount(usage.inputTokens)} / {tokenCount(usage.outputTokens)}
-      {usage.calls > 1 && (
-        <span className="mt-0.5 block text-ink-soft">{usage.calls} calls</span>
-      )}
-    </span>
-  )
-}
-
-export default function ActivityPage() {
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(25)
-  const [openId, setOpenId] = useState<string | null>(null)
-
+function Detail({ event, refresh }: { event: ActivityEvent; refresh: () => void }) {
   const load = useCallback(
     (signal: AbortSignal) =>
-      request<{ rows: EventRow[]; total: number; page: number; lastPage: number }>(
-        `/api/messages?page=${page}&pageSize=${pageSize}`,
-        { signal }
+      request<Record<string, unknown> & { invocation?: Invocation }>(
+        event.id.startsWith('message:')
+          ? `/api/messages/${event.sourceId}`
+          : `/api/activity/${encodeURIComponent(event.id)}`,
+        { signal },
       ),
-    [page, pageSize]
+    [event],
   )
-  // Page 1 is the live view. Polling while someone reads page 4 would shuffle
-  // rows out from under them as new messages arrive.
-  const { data, loading, error, stale, loadedAt, refresh } = useAsyncData(load, [load], {
-    pollMs: page === 1 ? 5000 : undefined,
-  })
-
-  const rows = data?.rows ?? []
-
+  const detail = useAsyncData(load, [load])
+  return detail.loading && !detail.data ? (
+    <SkeletonRows />
+  ) : detail.error ? (
+    <ErrorState title="Could not load details" onRetry={detail.refresh} />
+  ) : detail.data?.invocation ? (
+    <CaptureDetail
+      invocation={detail.data.invocation}
+      onSynced={() => {
+        detail.refresh()
+        refresh()
+      }}
+    />
+  ) : (
+    <div className="space-y-4">
+      <p className="whitespace-pre-wrap text-sm">{event.detail || 'No text recorded'}</p>
+      {typeof detail.data?.error === 'string' && (
+        <p className="text-sm text-danger">{detail.data.error}</p>
+      )}
+      <Disclosure summary="Technical details">
+        <KeyValues
+          rows={Object.entries(detail.data ?? {})
+            .filter(
+              ([key, value]) =>
+                !['message', 'content', 'error', 'invocation', 'usageCalls'].includes(key) &&
+                value !== null &&
+                typeof value !== 'object',
+            )
+            .map(([key, value]) => [key, String(value)] as [string, string])}
+        />
+      </Disclosure>
+    </div>
+  )
+}
+function ActivityWorkspace() {
+  const router = useRouter(),
+    params = useSearchParams()
+  const [selected, setSelected] = useState<ActivityEvent | null>(null)
+  const [search, setSearch] = useState(params.get('search') ?? '')
+  const query = params.toString()
+  const load = useCallback(
+    (signal: AbortSignal) => request<ActivityData>(`/api/activity?${query}`, { signal }),
+    [query],
+  )
+  const data = useAsyncData(load, [load])
+  function setParam(key: string, value: string | null) {
+    const next = new URLSearchParams(params.toString())
+    next.delete('cursor')
+    if (value) next.set(key, value)
+    else next.delete(key)
+    router.replace(`/activity?${next}`, { scroll: false })
+  }
+  function openContact(id: string) {
+    const next = new URLSearchParams(params.toString())
+    next.set('contactId', id)
+    next.delete('cursor')
+    next.delete('conversationId')
+    if (data.data) {
+      next.set('from', data.data.period.from)
+      next.set('to', data.data.period.to)
+    }
+    router.push(`/activity?${next}`, { scroll: false })
+  }
+  function nextPage() {
+    if (!data.data?.nextCursor) return
+    const next = new URLSearchParams(params.toString())
+    next.set('cursor', data.data.nextCursor)
+    next.set('from', data.data.period.from)
+    next.set('to', data.data.period.to)
+    router.push(`/activity?${next}`, { scroll: false })
+  }
+  const timeline = data.data?.view === 'events',
+    contactId = params.get('contactId')
   return (
     <PageBody width="wide">
       <PageHeader
         title="Activity"
-        description="Everything sent, received and captured, newest first. Open a row to see what happened and how to fix it."
+        description="Message history and troubleshooting. Start with a contact, then inspect what happened in a conversation."
+        back={
+          contactId
+            ? { href: '/activity', label: 'All contacts' }
+            : { href: '/settings/technical', label: 'Technical settings' }
+        }
         actions={
-          <Button variant="secondary" onClick={refresh} pending={loading && !!data} pendingLabel="Refreshing…">
-            <RefreshIcon size={15} />
+          <Button variant="secondary" onClick={data.refresh} pending={data.loading && !!data.data}>
             Refresh
           </Button>
         }
       />
-
-      {stale && (
+      <Panel className="mb-5">
+        <div className="grid items-end gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              setParam('search', search)
+            }}
+          >
+            <SearchInput
+              label="Search name or phone"
+              value={search}
+              onChange={setSearch}
+              placeholder="Search, then press Enter"
+            />
+          </form>
+          <Select
+            label="Date range"
+            value={params.get('days') ?? '30'}
+            onChange={(e) => {
+              const next = new URLSearchParams(params.toString())
+              next.set('days', e.target.value)
+              next.delete('from')
+              next.delete('to')
+              next.delete('cursor')
+              router.replace(`/activity?${next}`, { scroll: false })
+            }}
+          >
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </Select>
+          <Input
+            label="Business number name"
+            value={params.get('session') ?? ''}
+            onChange={(e) => setParam('session', e.target.value)}
+            placeholder="All numbers"
+          />
+          <Select
+            label="Result"
+            value={params.get('result') ?? 'all'}
+            onChange={(e) => setParam('result', e.target.value === 'all' ? null : e.target.value)}
+          >
+            <option value="all">All results</option>
+            <option value="failed">Needs investigation</option>
+          </Select>
+        </div>
+        <div className="flex flex-wrap gap-2 border-t border-line px-4 py-3">
+          <LinkButton
+            size="sm"
+            variant={!params.get('view') ? 'primary' : 'secondary'}
+            href="/activity"
+          >
+            By contact
+          </LinkButton>
+          <LinkButton
+            size="sm"
+            variant={params.get('view') === 'events' ? 'primary' : 'secondary'}
+            href="/activity?view=events"
+          >
+            All events
+          </LinkButton>
+          <LinkButton
+            size="sm"
+            variant={params.get('view') === 'system' ? 'primary' : 'secondary'}
+            href="/activity?view=system"
+          >
+            System events
+          </LinkButton>
+        </div>
+      </Panel>
+      {data.stale && <StaleNotice at={data.loadedAt} onRetry={data.refresh} />}
+      {params.get('metric') === 'ai' && (
+        <p className="mb-4 text-sm text-ink-muted">
+          Evidence: sent AI service replies from{' '}
+          {data.data ? fullTimestamp(data.data.period.from) : '…'} to{' '}
+          {data.data ? fullTimestamp(data.data.period.to) : '…'}.
+        </p>
+      )}
+      {contactId && data.data?.conversations && (
         <div className="mb-4">
-          <StaleNotice at={loadedAt} onRetry={refresh} />
+          <Select
+            label="Conversation"
+            value={params.get('conversationId') ?? ''}
+            onChange={(e) => setParam('conversationId', e.target.value || null)}
+          >
+            <option value="">All conversations for this contact</option>
+            {data.data.conversations.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.sessionName ?? 'Business number'} · {c.id.slice(0, 8)}
+              </option>
+            ))}
+          </Select>
         </div>
       )}
-
-      <Panel className="overflow-hidden">
-        {loading && !data ? (
-          <SkeletonRows rows={8} />
-        ) : error ? (
+      <Panel>
+        {data.loading && !data.data ? (
+          <SkeletonRows />
+        ) : data.error ? (
           <ErrorState
             title="Could not load activity"
-            detail="Nothing has been changed — only this list failed to load."
-            onRetry={refresh}
+            detail="Saved history has not changed."
+            onRetry={data.refresh}
           />
-        ) : rows.length === 0 ? (
+        ) : !data.data?.rows.length ? (
           <EmptyState
-            icon={<ActivityIcon size={22} />}
-            title={page > 1 ? 'Nothing on this page' : 'No activity yet'}
-            description={
-              page > 1
-                ? 'Go back a page to see recorded events.'
-                : 'Messages and captures appear here as soon as they happen.'
-            }
+            title="No activity matches these filters"
+            description="Try a longer period or clear your filters."
           />
         ) : (
           <>
-            <TableScroll>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th className="w-36">When</Th>
-                    <Th className="w-24">From</Th>
-                    <Th className="w-52">Customer</Th>
-                    <Th>What happened</Th>
-                    <Th className="w-32" numeric>
-                      Tokens in / out
-                    </Th>
-                    <Th className="w-28">Result</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => {
-                    const sender = SENDER[row.senderType] ?? SENDER.customer
-                    return (
-                      <tr key={row.id} className="hover:bg-hover">
-                        <Td className="align-top whitespace-nowrap text-ink-soft">
-                          <time
-                            dateTime={row.createdAt}
-                            title={fullTimestamp(row.createdAt)}
-                            className="text-xs tabular-nums"
-                          >
-                            {timeAgo(row.createdAt)}
-                          </time>
-                        </Td>
-                        <Td className="align-top">
-                          <Badge variant={sender.variant}>{sender.label}</Badge>
-                        </Td>
-                        <Td className="align-top">
-                          <button
-                            type="button"
-                            onClick={() => setOpenId(row.id)}
-                            className="cursor-pointer rounded-sm text-left text-sm font-medium text-ink hover:underline"
-                          >
-                            {contactLabel(row.contactName, row.contactPhone)}
-                          </button>
-                          {row.contactName && row.contactPhone && (
-                            <span className="mt-0.5 block text-xs text-ink-soft tabular-nums">
-                              {row.contactPhone}
-                            </span>
-                          )}
-                        </Td>
-                        <Td className="max-w-0 align-top">
-                          <button
-                            type="button"
-                            onClick={() => setOpenId(row.id)}
-                            className="w-full cursor-pointer rounded-sm text-left"
-                          >
-                            <span className="block truncate text-sm text-ink">{describeEvent(row)}</span>
-                            {row.error &&
-                              row.messageType !== 'tool' &&
-                              row.senderType !== 'system' && (
-                                <span className="mt-0.5 block truncate text-xs text-danger">
-                                  {row.error}
-                                </span>
-                              )}
-                          </button>
-                        </Td>
-                        <Td className="align-top" numeric>
-                          <TokenCell usage={row.usage} />
-                        </Td>
-                        <Td className="align-top">
-                          <MessageStatusBadge status={row.status} />
-                        </Td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </Table>
-            </TableScroll>
-
-            <Pagination
-              page={data!.page}
-              lastPage={data!.lastPage}
-              total={data!.total}
-              pageSize={pageSize}
-              onPage={(next) => setPage(Math.min(Math.max(1, next), data!.lastPage))}
-              onPageSize={(next) => {
-                setPageSize(next)
-                setPage(1)
-              }}
-              scopeNote={page === 1 ? 'page 1 refreshes automatically' : 'auto-refresh pauses off page 1'}
-            />
+            {timeline ? (
+              <ol className="divide-y divide-line-soft">
+                {(data.data.rows as ActivityEvent[]).map((event) => (
+                  <li key={event.id} className="p-4 md:p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-semibold">
+                        {KINDS[event.kind] ?? event.kind}
+                      </span>
+                      <time dateTime={event.createdAt} className="text-xs text-ink-muted">
+                        {fullTimestamp(event.createdAt)}
+                      </time>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge variant="neutral">
+                        {contactLabel(event.contactName, event.contactPhone) || 'System'}
+                      </Badge>
+                      {event.sessionName && <Badge variant="neutral">{event.sessionName}</Badge>}
+                      {event.kind === 'capture' ? (
+                        <CaptureStatusBadge status={event.status} />
+                      ) : (
+                        <MessageStatusBadge status={event.status} />
+                      )}
+                    </div>
+                    <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-ink-muted">
+                      {event.detail || 'No text recorded'}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <Button variant="secondary" size="sm" onClick={() => setSelected(event)}>
+                        View details
+                      </Button>
+                      {event.conversationId && (
+                        <Link
+                          href={`/inbox?c=${event.conversationId}&status=all`}
+                          className="self-center text-sm text-action underline"
+                        >
+                          Open in inbox
+                        </Link>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <ul className="divide-y divide-line-soft">
+                {(data.data.rows as ContactGroup[]).map((contact) => (
+                  <li key={contact.id}>
+                    <button
+                      onClick={() => openContact(contact.id)}
+                      className="grid w-full cursor-pointer gap-3 p-4 text-left hover:bg-hover sm:grid-cols-[1.4fr_1fr_1fr] md:p-5"
+                    >
+                      <span>
+                        <span className="block text-sm font-semibold">
+                          {contactLabel(contact.contactName, contact.contactPhone)}
+                        </span>
+                        <span className="mt-1 block text-xs text-ink-muted">
+                          {contact.contactPhone} · {contact.numbers.join(', ')}
+                        </span>
+                      </span>
+                      <span className="text-sm text-ink-muted">
+                        {timeAgo(contact.createdAt)}
+                        <span className="mt-1 block text-xs">
+                          {contact.conversations} conversations · {contact.events} events
+                        </span>
+                      </span>
+                      <span className="text-sm">
+                        {contact.failures ? (
+                          <Badge variant="warning">{contact.failures} issues need attention</Badge>
+                        ) : (
+                          <Badge variant="neutral">No unresolved issues</Badge>
+                        )}
+                        <span className="mt-1 block text-xs text-ink-muted">
+                          AI cost for period:{' '}
+                          {!contact.hasUsage
+                            ? 'No AI usage'
+                            : contact.costMicros === null || contact.costMicros === undefined
+                              ? 'Incomplete'
+                              : new Intl.NumberFormat(undefined, {
+                                  style: 'currency',
+                                  currency: data.data?.currency ?? 'MYR',
+                                }).format(contact.costMicros / 1000000)}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-4">
+              <p className="text-xs text-ink-muted">
+                {data.data.total} matching {timeline ? 'events' : 'contacts'} ·{' '}
+                {params.get('conversationId') ? 'Oldest' : 'Latest'} first. Refresh when you’re
+                ready for updates.
+              </p>
+              <div className="flex gap-2">
+                {params.get('cursor') && (
+                  <Button variant="secondary" size="sm" onClick={() => setParam('cursor', null)}>
+                    First page
+                  </Button>
+                )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={!data.data.nextCursor}
+                  onClick={nextPage}
+                >
+                  Next page
+                </Button>
+              </div>
+            </div>
           </>
         )}
       </Panel>
-
-      {openId && <EventDrawer id={openId} onClose={() => setOpenId(null)} onChanged={refresh} />}
+      <Drawer
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        title="Activity details"
+        width="wide"
+      >
+        {selected && <Detail event={selected} refresh={data.refresh} />}
+      </Drawer>
     </PageBody>
   )
 }
-
-function EventDrawer({
-  id,
-  onClose,
-  onChanged,
-}: {
-  id: string
-  onClose: () => void
-  onChanged: () => void
-}) {
-  const load = useCallback(
-    (signal: AbortSignal) => request<EventDetail>(`/api/messages/${id}`, { signal }),
-    [id]
-  )
-  const { data, loading, error, refresh } = useAsyncData(load, [load])
-
-  const sender = data ? (SENDER[data.senderType] ?? SENDER.customer) : null
-
+export default function ActivityPage() {
   return (
-    <Drawer
-      open
-      onClose={onClose}
-      title="Event details"
-      description={data ? fullTimestamp(data.createdAt) : undefined}
-      width="wide"
-    >
-      {loading && !data ? (
-        <SkeletonRows rows={4} />
-      ) : error || !data ? (
-        <ErrorState title="Could not load this event" detail={error ?? undefined} onRetry={refresh} />
-      ) : (
-        <div className="space-y-6">
-          {/* Outcome first — it is the reason anyone opens this drawer. */}
-          {data.messageType === 'tool' ? null : data.error ? (
-            <Banner tone="danger" title="This event failed">
-              {data.error}
-            </Banner>
-          ) : (
-            <Banner tone="success" title="This event completed">
-              No problem was recorded.
-            </Banner>
-          )}
-
-          {data.messageType === 'tool' && (
-            <section>
-              <h3 className="mb-3 text-sm font-semibold text-ink">Captured details</h3>
-              {data.invocation ? (
-                <CaptureDetail
-                  invocation={data.invocation}
-                  showContact={false}
-                  onSynced={() => {
-                    refresh()
-                    onChanged()
-                  }}
-                />
-              ) : (
-                <p className="text-sm leading-5 text-ink-muted">
-                  Nothing was captured. The AI called this tool before it had every required detail,
-                  so it asked the customer for the rest instead. That is expected behaviour, not an
-                  error.
-                </p>
-              )}
-            </section>
-          )}
-
-          {data.usage && (
-            <section>
-              <h3 className="mb-2 text-sm font-semibold text-ink">AI token usage</h3>
-              <KeyValues
-                rows={[
-                  ['Tokens in', tokenCount(data.usage.inputTokens)],
-                  ['Tokens out', tokenCount(data.usage.outputTokens)],
-                  ['Total', tokenCount(data.usage.totalTokens)],
-                  [
-                    'API calls',
-                    data.usageCalls.length === 1
-                      ? '1'
-                      : `${data.usageCalls.length} — the model used tools before answering`,
-                  ],
-                  ['Provider', data.usage.providerName ?? 'Deleted provider'],
-                ]}
-              />
-
-              {/* The rounds are only worth listing when there was more than
-                  one: that is when the total stops being self-explanatory. */}
-              {data.usageCalls.length > 1 && (
-                <div className="mt-3 overflow-hidden rounded-md border border-line">
-                  <Table>
-                    <thead>
-                      <tr>
-                        <Th className="w-20">Round</Th>
-                        <Th>Model</Th>
-                        <Th numeric>In</Th>
-                        <Th numeric>Out</Th>
-                        <Th numeric className="w-20">
-                          Took
-                        </Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.usageCalls.map((call) => (
-                        <tr key={call.id}>
-                          <Td>{call.round + 1}</Td>
-                          <Td className="font-mono text-xs">{call.model}</Td>
-                          <Td numeric>{tokenCount(call.inputTokens)}</Td>
-                          <Td numeric>{tokenCount(call.outputTokens)}</Td>
-                          <Td numeric>
-                            {call.latencyMs === null ? '—' : `${(call.latencyMs / 1000).toFixed(1)}s`}
-                          </Td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
-                </div>
-              )}
-
-              {data.usageCalls.some((call) => call.status === 'failed') && (
-                <p className="mt-2 text-xs leading-4 text-warning">
-                  One or more calls failed and were retried. Failed calls are counted here even
-                  though they returned no answer.
-                </p>
-              )}
-            </section>
-          )}
-
-          {data.message && data.messageType !== 'tool' && (
-            <section>
-              <h3 className="mb-2 text-sm font-semibold text-ink">Message</h3>
-              <p className="rounded-md border border-line bg-inset px-3 py-2.5 text-sm leading-5 break-words whitespace-pre-wrap text-ink">
-                {data.message}
-              </p>
-            </section>
-          )}
-
-          {data.mediaStatus && data.mediaStatus !== 'ignored' && (
-            <section>
-              <h3 className="mb-2 text-sm font-semibold text-ink">Attachment</h3>
-              <p className="rounded-md border border-line bg-inset px-3 py-2.5 text-sm leading-5 break-words whitespace-pre-wrap text-ink">
-                {data.mediaStatus === 'described' && data.mediaSummary
-                  ? data.mediaSummary
-                  : MEDIA_STATUS_TEXT[data.mediaStatus] ?? data.mediaStatus}
-              </p>
-              <p className="mt-2 text-xs leading-4 text-ink-soft">
-                This is what the image or voice model made of the file — not something the customer
-                typed. It is what the reply was written from.
-              </p>
-            </section>
-          )}
-
-          <section>
-            <h3 className="mb-2 text-sm font-semibold text-ink">Customer</h3>
-            <KeyValues
-              rows={[
-                ['Name', data.contactName ?? 'Not provided by WhatsApp'],
-                ['Phone', data.contactPhone ?? '—'],
-                [
-                  'Conversation',
-                  data.conversationMode && data.conversationStatus ? (
-                    <span className="flex flex-wrap items-center gap-2">
-                      {data.conversationStatus === 'open' ? 'Open' : 'Resolved'} ·{' '}
-                      {data.conversationMode === 'auto' ? 'AI replies' : 'Human replies'}
-                      <Link
-                        href={`/inbox?c=${data.conversationId}`}
-                        className="font-medium text-action hover:underline"
-                      >
-                        Open in Inbox
-                      </Link>
-                    </span>
-                  ) : (
-                    '—'
-                  ),
-                ],
-              ]}
-            />
-          </section>
-
-          <section>
-            <h3 className="mb-2 text-sm font-semibold text-ink">Delivery</h3>
-            <KeyValues
-              rows={[
-                ['Result', <MessageStatusBadge key="s" status={data.status} />],
-                ['Direction', data.direction === 'incoming' ? 'Received from customer' : 'Sent to customer'],
-                ['Sender', sender?.label ?? data.senderType],
-                ['Type', data.messageType],
-                ...(data.mediaMime ? [['File type', data.mediaMime] as [string, string]] : []),
-              ]}
-            />
-            {data.status === 'sent' && (
-              <p className="mt-2 text-xs leading-4 text-ink-soft">
-                Sent means the WhatsApp gateway accepted the message. It is not a delivery or read
-                receipt.
-              </p>
-            )}
-          </section>
-
-          {/* Identifiers are for support conversations, not daily reading. */}
-          <Disclosure summary="Technical identifiers">
-            <KeyValues
-              mono
-              rows={[
-                ['Message ID', data.id],
-                ['Conversation ID', data.conversationId],
-                ['Contact ID', data.contactId],
-                ['Provider', data.provider],
-                ['Provider message ID', data.providerMessageId ?? '—'],
-              ]}
-            />
-          </Disclosure>
-        </div>
-      )}
-    </Drawer>
+    <Suspense fallback={<SkeletonRows />}>
+      <ActivityWorkspace />
+    </Suspense>
   )
 }

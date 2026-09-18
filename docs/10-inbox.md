@@ -1,50 +1,43 @@
 # Inbox
 
-The Inbox is the main operational screen. Every WhatsApp thread appears here,
-whether the AI or a human is handling it.
+Inbox is the main daily screen for enquiries handled by AI or your team.
 
-## Layout
+## Find work
 
-- **Left:** conversation list, filtered by **Open** / **Resolved** / **All**,
-  with search by name or phone number.
-- **Right:** the selected thread, its controls, and the reply box.
+Use **Needs attention**, **All open** or **Done**, then search by customer name or phone.
+Filter by AI or Your team when needed. Counts cover all records; pages show 25 matching
+conversations. Attention reasons identify failed replies, unanswered team work, paused
+AI or connection/assistant blockers. Emoji-only decoration is excluded.
 
-## Who said what
+## Take over and reply
 
-| Bubble | Meaning |
-| ------ | ------- |
-| White, left | The customer |
-| Green outline, labelled `AI` | An automatic AI reply |
-| Solid green, labelled `You` | A manual reply from an operator |
-| Red | A message that failed to send, with the reason |
-| Red pill, centred | A system note, e.g. the AI provider was unreachable |
+**Take over** pauses AI for this conversation and focuses the reply box. Type and
+press Enter to send, or Shift+Enter for a new line. In an AI conversation,
+**Take over and send** claims it for your team before delivery. Failed sends remain
+visible and keep team ownership. A stale change from another operator asks you to refresh.
 
-## AI Auto Reply toggle
+Taking over does not change the customer's preference for future conversations.
+A send or external action already in progress can still finish; the takeover notice
+warns when an AI send is already processing.
 
-Each conversation is in one of two modes:
+**Let AI reply** hands this open conversation back and schedules one response to eligible
+waiting customer messages. It does not resend old replies or reply to decoration.
+Global pause still applies. Choose an AI agent in the conversation-details drawer. Different conversations can use different configured agents. A switch suppresses the old generation and schedules eligible waiting input for the new agent when AI is allowed.
 
-- **ON** (`auto`) — the AI answers incoming messages
-- **OFF** (`human`) — messages are stored but nothing is sent automatically
+## Understand status
 
-Turning the toggle also sets the default for that contact's future
-conversations, so taking a customer off the AI stays in effect.
+Customer, AI and Your team labels identify who sent each message. AI replies on means
+AI is allowed to respond, not that it is currently writing. Open / Done describes the
+conversation lifecycle separately. Failed messages show their error. Sent means the
+WhatsApp gateway accepted the message; delivery and reading are not confirmed.
 
-> The global switch in `Settings` still applies. If global auto reply is off,
-> no conversation replies automatically regardless of its mode.
+**Mark done** closes the thread. A later customer message starts a new conversation
+using the customer's future AI preference and selected agent. Maintain multiple agents in Settings → AI agents. Set a customer’s future agent in Contacts or the
+conversation-details drawer. Transcript history retains the existing 200-message cap;
+Activity provides paginated investigation history.
 
-## Bot
+Drafts remain when switching conversations within Inbox, and incoming updates do not
+pull you away from older messages you are reading. On a phone, open one thread at a time;
+takeover remains visible above the messages.
 
-Pick which bot answers this conversation, or leave it on **System default**.
-Disabled bots are shown but cannot be selected.
-
-## Manual reply
-
-Type in the box and press **Enter** to send (Shift+Enter for a new line). The
-message goes out through the same WhatsApp number the conversation arrived on.
-If it fails, it stays in the thread marked `failed` with the error.
-
-## Resolve
-
-**Resolve** closes the thread and moves it to the Resolved tab. If the customer
-writes again, a new conversation opens automatically, inheriting the contact's
-AI mode and bot.
+![Inbox, synthetic data](./ux-revamp/evidence/20260916/inbox-390.png)

@@ -107,7 +107,7 @@ export default function CampaignsPage() {
   return (
     <PageBody width="wide">
       <PageHeader
-        title="Campaigns"
+        title="Broadcasts"
         description="Send one deliberate message to a group of customers, one at a time with a delay between them."
         actions={
           <LinkButton href="/campaigns/new" variant="primary">
@@ -279,7 +279,7 @@ export default function CampaignsPage() {
       </Panel>
 
       <p className="mt-4 max-w-[65ch] text-xs leading-4 text-ink-soft">
-        Pausing AI replies does not pause a campaign, and a campaign does not depend on a bot. A
+        Pausing AI replies does not pause a campaign, and a campaign does not depend on an assistant. A
         campaign sends the message you wrote, to the recipients you chose.
       </p>
 

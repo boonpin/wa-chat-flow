@@ -1,44 +1,42 @@
-# Reply Settings
+# Automatic replies
 
-**Automation → Reply settings** controls system-wide reply behaviour. It used to
-live under `Settings`; `Settings` is now a hub that points at whichever page owns
-each setting.
+Open **Settings → Automatic replies** to set workspace-wide reply rules and the default
+AI agent. The content navigation keeps Automatic replies selected and links to the other Settings sections. Changes apply when you save; incoming messages remain stored under every policy.
 
-Changes here are a draft until you choose **Save changes** — the "Currently
-saved" strip at the top always describes what the server has, not what you have
-just switched.
+## Reply policy
 
-## AI replies (global switch)
+| Setting | Behavior |
+| --- | --- |
+| Allow AI replies | Eligible new and existing conversations may use AI. Team-owned threads remain with the team. |
+| Continue current AI conversations | Current AI threads continue; new conversations start with your team. Explicit handback can enable a waiting thread. |
+| Pause all AI replies | Your team receives and replies manually. No new automatic send starts; an already-started send can still finish. |
 
-- When ON: the system can send AI replies.
-- When OFF: no AI replies are sent, whatever any conversation or contact says.
+Dashboard also offers an emergency global pause. Pausing AI does not pause broadcasts.
+New customer AI preferences follow whether new AI conversations are allowed; changing the
+workspace policy does not silently change each existing customer’s saved preference.
 
-Incoming messages are stored either way — turning this off stops replies, not
-receiving. New contacts inherit this switch as their starting AI setting.
+## Default agent
 
-## Default Bot
+Maintain multiple agents in **Settings → AI agents**, then choose the workspace default here.
+When a conversation opens, its customer’s assigned agent is copied to that thread. During
+reply execution selection uses:
 
-Bot selection walks from most specific to least:
-
+```text
+conversation agent → workspace default → legacy default flag
 ```
-conversation bot  →  contact bot  →  default bot (here)  →  bot flagged Default
-```
 
-Disabled bots are skipped at every step.
+Disabled agents are skipped. Customer default changes affect future threads; Inbox can
+change the active agent independently. The page identifies the effective fallback and any
+legacy-default conflict. Customer classification is not automatic.
 
-Recommended: always set a default bot.
+## Reply grouping
 
-## Save and Discard
+Timing settings combine a burst of customer messages into one response. The quiet window
+restarts with each eligible message, subject to the maximum wait. Save to apply changes.
 
-- Changes show an unsaved banner.
-- Click **Save Settings** to apply.
-- Click **Discard** to revert.
+Per-conversation takeover is in [Inbox](./10-inbox.md). Customer preferences and group
+selection are in [Contacts](./06-contacts-management.md).
 
-## Related
-
-- Per-conversation control lives in the [Inbox](./10-inbox.md).
-- Per-contact defaults live in [Contacts](./06-contacts-management.md).
-
-## Screenshot
-
-![Settings](./screenshots/06-settings.png)
+Technical connections and sheet configuration are under Settings → Technical settings.
+Its inner side navigation also opens Activity and Workspace preferences. For access,
+initial setup or connection repair guidance, open Help → Setup & troubleshooting.

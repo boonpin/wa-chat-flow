@@ -85,13 +85,12 @@ export function ContactProfile({
   const load = useCallback(
     async (signal: AbortSignal) => {
       const [history, conversations] = await Promise.all([
-        request<MessagePage>(
-          `/api/messages?contactId=${contact.id}&pageSize=${HISTORY_PAGE}`,
-          { signal }
-        ),
+        request<MessagePage>(`/api/messages?contactId=${contact.id}&pageSize=${HISTORY_PAGE}`, {
+          signal,
+        }),
         request<ConversationRef[]>(
           `/api/conversations?search=${encodeURIComponent(contact.phoneNumber)}`,
-          { signal }
+          { signal },
         ),
       ])
       return {
@@ -99,7 +98,7 @@ export function ContactProfile({
         conversations: conversations.filter((c) => c.contactId === contact.id),
       }
     },
-    [contact.id, contact.phoneNumber]
+    [contact.id, contact.phoneNumber],
   )
   const { data, loading, error, refresh } = useAsyncData(load, [load])
 
@@ -165,14 +164,14 @@ export function ContactProfile({
         {/* Two different scopes, side by side, because the API applies them to
             two different things and conflating them was the old bug. */}
         <section>
-          <h3 className="text-sm font-semibold text-ink">Who replies to this customer</h3>
+          <h3 className="text-sm font-semibold text-ink">Reply preference for new conversations</h3>
           <div className="mt-3 space-y-4 rounded-md border border-line bg-inset/60 p-3">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-ink">AI replies</p>
                 <p className="mt-0.5 text-sm leading-5 text-ink-muted">
-                  Applies to this customer’s open conversation now, and to every conversation they
-                  start in future.
+                  Applies to new conversations with this customer. Take over the current
+                  conversation in Inbox.
                 </p>
               </div>
               <Switch
@@ -183,8 +182,8 @@ export function ContactProfile({
                     { aiEnabled: v },
                     'ai',
                     v
-                      ? 'The AI will answer this customer.'
-                      : 'You will answer this customer. The AI stays out.'
+                      ? 'AI enabled for this customer’s new conversations.'
+                      : 'New conversations will wait for your team.',
                   )
                 }
                 label={`AI replies for ${contactLabel(contact.name, contact.phoneNumber)}`}
@@ -193,15 +192,15 @@ export function ContactProfile({
 
             <div className="border-t border-line-soft pt-4">
               <Select
-                label="Default bot"
-                hint="Used for this customer’s future conversations. It does not change a bot already chosen for an open conversation."
+                label="Default agent"
+                hint="Used for this customer’s future conversations. It does not change the agent for an open conversation."
                 value={contact.aiBotId ?? ''}
                 disabled={saving === 'bot'}
                 onChange={(e) =>
                   save(
                     { aiBotId: e.target.value || null },
                     'bot',
-                    'Default bot updated for this customer.'
+                    'Default agent updated for this customer.',
                   )
                 }
               >
@@ -215,7 +214,11 @@ export function ContactProfile({
               </Select>
 
               {conversationBot && conversationBot.id !== contact.aiBotId && (
-                <Banner tone="info" title="This customer’s open conversation uses another bot" className="mt-3">
+                <Banner
+                  tone="info"
+                  title="This customer’s open conversation uses another agent"
+                  className="mt-3"
+                >
                   “{conversationBot.name}” is set on the conversation itself and keeps answering it.
                   {assignedBot ? ` “${assignedBot.name}” applies to new conversations.` : ''}
                 </Banner>
@@ -267,10 +270,7 @@ export function ContactProfile({
               ['Phone number', contact.phoneNumber],
               ['Name', contact.name ?? 'Not provided by WhatsApp'],
               ['Received on', contact.waSessionName ?? 'Not recorded'],
-              [
-                'Conversations',
-                data ? String(data.conversations.length) : '—',
-              ],
+              ['Conversations', data ? String(data.conversations.length) : '—'],
             ]}
           />
         </section>

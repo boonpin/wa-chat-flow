@@ -1,3 +1,4 @@
+import { recordConversationEvent } from '@/lib/conversation/service'
 import { db } from '@/lib/db'
 import { contacts, toolInvocations } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
@@ -78,7 +79,7 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
     return {
       ok: true,
       message:
-        'Details recorded. The team has been notified and will follow up — ' +
+        'Details saved locally, but Google Sheets sync failed. Do not claim staff were notified. ' +
         'do not ask the customer to repeat their details.',
       invocationId,
       syncError: result.error ?? 'Sink write failed',
@@ -109,6 +110,7 @@ export async function retryInvocation(invocationId: string): Promise<ToolResult>
     .get()
   if (!invocation) return { ok: false, error: 'Invocation not found' }
 
+  if (invocation.status === 'synced') return { ok: true, message: 'Already synced' }
   const row = getTool(invocation.toolId)
   if (!row) return { ok: false, error: 'Tool no longer exists' }
 
@@ -135,6 +137,7 @@ export async function retryInvocation(invocationId: string): Promise<ToolResult>
     .where(eq(toolInvocations.id, invocationId))
     .run()
 
+  recordConversationEvent(invocation.conversationId, 'capture_retry', result.ok ? 'Saved customer details synced to Google Sheets after retry' : 'Google Sheets retry failed; customer details remain saved locally')
   return result.ok ? { ok: true, message: 'Synced' } : { ok: false, error: result.error! }
 }
 

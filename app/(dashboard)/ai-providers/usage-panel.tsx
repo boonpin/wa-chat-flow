@@ -79,7 +79,7 @@ export function UsagePanel({ providerId }: { providerId: string }) {
             <Table>
               <thead>
                 <tr>
-                  <Th>Bot</Th>
+                  <Th>Assistant</Th>
                   <Th>Model</Th>
                   <Th numeric>Calls</Th>
                   <Th numeric>Tokens in</Th>
@@ -89,7 +89,7 @@ export function UsagePanel({ providerId }: { providerId: string }) {
               <tbody>
                 {data.byBot.map((row) => (
                   <tr key={`${row.botId ?? 'gone'}-${row.model}`}>
-                    <Td>{row.botName ?? <span className="text-ink-soft">Deleted bot</span>}</Td>
+                    <Td>{row.botName ?? <span className="text-ink-soft">Deleted assistant</span>}</Td>
                     <Td className="font-mono text-[13px]">{row.model}</Td>
                     <Td numeric>{tokenCount(row.calls)}</Td>
                     <Td numeric>{tokenCount(row.inputTokens)}</Td>

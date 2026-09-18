@@ -9,10 +9,10 @@ This user guide is split by module for easier reading.
 3. [Dashboard Overview](./03-dashboard-overview.md)
 4. [WhatsApp Connection](./04-whatsapp-connection.md)
 5. [Inbox](./10-inbox.md)
-6. [Bots Management](./05-bots-management.md)
+6. [AI agents (AI bots)](./05-bots-management.md)
 7. [Tools & Sheet Capture](./11-tools-and-capture.md)
 8. [Contacts Management](./06-contacts-management.md)
-9. [Reply Settings](./07-automation-settings.md)
+9. [Automatic replies](./07-automation-settings.md)
 10. [End-to-End Workflow](./08-end-to-end-workflow.md)
 11. [System Design](./SYSTEM_DESIGN.md)
 12. [Troubleshooting](./09-troubleshooting.md)
@@ -25,3 +25,7 @@ This user guide is split by module for easier reading.
 - [Bots](./screenshots/04-bots.png)
 - [Contacts](./screenshots/05-contacts.png)
 - [Settings](./screenshots/06-settings.png)
+
+Settings opens on AI agents. Technical settings has an inner side navigation for AI
+connections, Google Sheets, Activity and Workspace preferences. Help separates everyday
+app tasks from Setup & troubleshooting, including access and sheet connection guides.

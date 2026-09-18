@@ -48,11 +48,19 @@ export function channelStatusText(status: ChannelStatus): string {
 }
 
 export function ModeBadge({ mode }: { mode: 'auto' | 'human' }) {
-  return mode === 'auto' ? <Badge variant="ai">AI replies</Badge> : <Badge variant="human">Human replies</Badge>
+  return mode === 'auto' ? (
+    <Badge variant="ai">AI replies on</Badge>
+  ) : (
+    <Badge variant="human">Your team</Badge>
+  )
 }
 
 export function LifecycleBadge({ status }: { status: 'open' | 'resolved' }) {
-  return status === 'open' ? <Badge variant="neutral">Open</Badge> : <Badge variant="info">Resolved</Badge>
+  return status === 'open' ? (
+    <Badge variant="neutral">Open</Badge>
+  ) : (
+    <Badge variant="info">Done</Badge>
+  )
 }
 
 /** `sent` means the gateway accepted it. It is not delivered, and not read. */
@@ -161,13 +169,13 @@ export function ReplyStatusLine({
         )}
         {mode && (
           <span className="flex items-center gap-2">
-            <span className="text-ink-soft">Reply mode</span>
+            <span className="text-ink-soft">Who replies</span>
             <ModeBadge mode={mode} />
           </span>
         )}
         {bot !== undefined && bot !== null && (
           <span className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-ink-soft">Bot</span>
+            <span className="shrink-0 text-ink-soft">Agent</span>
             <span className="truncate font-medium text-ink">{bot.name ?? 'None selected'}</span>
             {bot.note && <span className="shrink-0 text-xs text-ink-soft">{bot.note}</span>}
           </span>
@@ -224,7 +232,7 @@ export function deriveBlockers(input: {
         input.channelStatus === 'unknown'
           ? 'This number’s connection could not be checked, so new messages may not arrive.'
           : 'This number is not connected, so new messages will not arrive.',
-      action: { label: 'Open WhatsApp channels', href: '/channels/whatsapp' },
+      action: { label: 'Open WhatsApp numbers', href: '/channels/whatsapp' },
       tone: input.channelStatus === 'failed' ? 'danger' : 'warning',
     })
   }
@@ -239,26 +247,26 @@ export function deriveBlockers(input: {
       })
     } else if (!input.botName) {
       blockers.push({
-        message: 'No bot is selected and no default is set, so the AI will not answer.',
-        action: { label: 'Choose a default bot', href: '/automation/replies' },
+        message: 'No agent is selected and no default is set, so the AI will not answer.',
+        action: { label: 'Choose a default agent', href: '/automation/replies' },
       })
     } else if (input.botEnabled === false) {
       blockers.push({
         message: `“${input.botName}” is turned off, so a different bot or none at all will answer.`,
-        action: { label: 'Open AI bots', href: '/bots' },
+        action: { label: 'Open AI agents', href: '/bots' },
       })
     } else if (input.botProviderMissing) {
       // The bot is otherwise ready, so nothing else reports this: the failure
       // would first appear as a customer who never got an answer.
       blockers.push({
         message: `“${input.botName}” has no AI provider, so every reply it tries will fail.`,
-        action: { label: 'Open AI providers', href: '/ai-providers' },
+        action: { label: 'Open AI connection', href: '/ai-providers' },
         tone: 'danger',
       })
     } else if (input.botProviderEnabled === false) {
       blockers.push({
         message: `The AI provider for “${input.botName}” is turned off, so its replies will fail.`,
-        action: { label: 'Open AI providers', href: '/ai-providers' },
+        action: { label: 'Open AI connection', href: '/ai-providers' },
         tone: 'danger',
       })
     }

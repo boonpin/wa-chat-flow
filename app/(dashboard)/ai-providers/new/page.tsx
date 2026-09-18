@@ -9,7 +9,7 @@ export default function NewAiProviderPage() {
       <PageHeader
         title="Add AI provider"
         description="Point the app at an AI account, then pick the model it should run."
-        back={{ href: '/ai-providers', label: 'AI providers' }}
+        back={{ href: '/ai-providers', label: "AI connection" }}
       />
       <ProviderForm provider={null} />
     </PageBody>

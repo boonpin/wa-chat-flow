@@ -28,6 +28,8 @@ export interface ImpactEstimates {
   laborValueMicros: number | null
   aiCostMicros: number | null
   netSavingsMicros: number | null
+  serviceCostMicros: number | null
+  recurringCostMicros: number | null
 }
 
 export interface ImpactPeriodSummary {
@@ -75,6 +77,10 @@ export interface ImpactAssumptions {
   manualReplyMinutes: number | null
   laborCostMinor: number | null
   currency: string
+  subscriptionCostMinor: number | null
+  otherMonthlyCostMinor: number | null
+  billingAnchor: string | null
+  aiCostIncluded: boolean
   rates: ImpactRateOption[]
 }
 

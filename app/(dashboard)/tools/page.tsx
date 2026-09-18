@@ -1,12 +1,10 @@
 'use client'
 
-import Link from 'next/link'
 import { Suspense, useCallback, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Badge,
   CaptureStatusBadge,
-  ChevronRight,
   Drawer,
   EmptyState,
   ErrorState,
@@ -19,7 +17,6 @@ import {
   SheetIcon,
   Skeleton,
   SkeletonRows,
-  ToolIcon,
   contactLabel,
   fullTimestamp,
   request,
@@ -27,75 +24,17 @@ import {
   useAsyncData,
 } from '@/components/ui'
 import { CaptureDetail, type Invocation } from '@/components/capture-detail'
-import type { ToolRecord } from './tool-form'
+import { ToolSettingsList } from '@/components/tool-settings-list'
 
 /** The captures endpoint caps at 500 and has no cursor, so counts say "recent". */
 const CAPTURE_LIMIT = 100
-
-function ToolsList() {
-  const load = useCallback(
-    (signal: AbortSignal) => request<ToolRecord[]>('/api/tools', { signal }),
-    []
-  )
-  const { data, loading, error, refresh } = useAsyncData(load, [load])
-
-  if (loading && !data) return <SkeletonRows rows={3} />
-  if (error)
-    return (
-      <ErrorState title="Could not load your tools" detail="Nothing has been changed." onRetry={refresh} />
-    )
-  if (!data || data.length === 0)
-    return (
-      <EmptyState
-        icon={<ToolIcon size={22} />}
-        title="Save customer details to a sheet"
-        description="Start with a sales enquiry or support request, then attach it to a bot."
-        action={
-          <LinkButton href="/tools/new" variant="primary" size="sm">
-            Create tool
-          </LinkButton>
-        }
-      />
-    )
-
-  return (
-    <ul>
-      {data.map((tool) => (
-        <li key={tool.id}>
-          <Link
-            href={`/tools/${tool.id}`}
-            className="flex items-start gap-4 border-b border-line-soft px-4 py-4 transition-colors last:border-0 hover:bg-hover md:px-5"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-ink">{tool.name}</span>
-                <Badge variant="info">{tool.sheetTab}</Badge>
-                {!tool.enabled && <Badge variant="neutral">Turned off</Badge>}
-                {!tool.hasSinkUrl && <Badge variant="warning">Sheet not connected</Badge>}
-              </span>
-              <span className="mt-1 block text-sm leading-5 text-ink-muted">{tool.description}</span>
-              <span className="mt-1 block text-sm text-ink-soft">
-                {tool.fields.length === 0
-                  ? 'No fields yet'
-                  : `Collects: ${tool.fields.map((f) => f.label).join(', ')}`}
-              </span>
-            </span>
-            <span className="mt-0.5 shrink-0 text-ink-soft">
-              <ChevronRight size={16} />
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
-  )
-}
 
 function CapturesList() {
   const [openId, setOpenId] = useState<string | null>(null)
   const load = useCallback(
     (signal: AbortSignal) =>
       request<Invocation[]>(`/api/tools/invocations?limit=${CAPTURE_LIMIT}`, { signal }),
-    []
+    [],
   )
   const { data, loading, error, refresh } = useAsyncData(load, [load])
   const open = data?.find((i) => i.id === openId) ?? null
@@ -114,10 +53,10 @@ function CapturesList() {
       <EmptyState
         icon={<SheetIcon size={22} />}
         title="No details collected yet"
-        description="Captures appear here when a bot with this tool attached uses it in a conversation."
+        description="Captures appear here when an agent with this tool attached uses it in a conversation."
         action={
           <LinkButton href="/bots" variant="secondary" size="sm">
-            Review bot attachment
+            Review agent attachment
           </LinkButton>
         }
       />
@@ -148,7 +87,9 @@ function CapturesList() {
                   </span>
                   <span className="mt-1 block truncate text-sm text-ink-muted">{summary}</span>
                   {invocation.error && (
-                    <span className="mt-0.5 block truncate text-sm text-danger">{invocation.error}</span>
+                    <span className="mt-0.5 block truncate text-sm text-danger">
+                      {invocation.error}
+                    </span>
                   )}
                 </span>
                 <time
@@ -199,7 +140,7 @@ function ToolsWorkspace() {
     <PageBody width="content">
       <PageHeader
         title="Tools"
-        description="Let a bot collect details mid-conversation and write them to a Google Sheet."
+        description="Let an agent collect details mid-conversation and write them to a Google Sheet."
         actions={
           <LinkButton href="/tools/new" variant="primary">
             <PlusIcon size={15} />
@@ -217,14 +158,20 @@ function ToolsWorkspace() {
         ]}
       />
 
-      <Panel>{view === 'captures' ? <CapturesList /> : <ToolsList />}</Panel>
+      <Panel>{view === 'captures' ? <CapturesList /> : <ToolSettingsList />}</Panel>
     </PageBody>
   )
 }
 
 export default function ToolsPage() {
   return (
-    <Suspense fallback={<PageBody width="content"><Skeleton className="h-96 w-full" /></PageBody>}>
+    <Suspense
+      fallback={
+        <PageBody width="content">
+          <Skeleton className="h-96 w-full" />
+        </PageBody>
+      }
+    >
       <ToolsWorkspace />
     </Suspense>
   )
